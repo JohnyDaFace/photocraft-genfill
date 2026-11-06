@@ -1,0 +1,33 @@
+"""Builds the standalone app with PyInstaller (no Python needed on the user's computer).
+
+    python build.py
+
+Windows: dist/GenFill-for-PhotoCraft.exe (one file)
+macOS:   dist/GenFill for PhotoCraft.app (zip it for download)
+Linux:   dist/genfill-for-photocraft (one file)
+"""
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+NAME = {"win32": "GenFill-for-PhotoCraft", "darwin": "GenFill for PhotoCraft"}.get(sys.platform, "genfill-for-photocraft")
+
+
+def main() -> None:
+    subprocess.run([sys.executable, str(ROOT / "tools" / "make_icon.py")], check=True)
+    icon = ROOT / "assets" / ("icon.ico" if sys.platform == "win32" else "icon.png")
+    args = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed",
+            "--name", NAME, "--icon", str(icon), "--paths", str(ROOT),
+            "--osx-bundle-identifier", "com.photocraftgenfill.app",
+            "--exclude-module", "pytest",
+            "--add-data", f"{ROOT / 'assets' / 'icon.png'}{';' if sys.platform == 'win32' else ':'}assets"]
+    if sys.platform != "darwin":
+        args.append("--onefile")  # a .app bundle is already a single thing to download on macOS
+    args.append(str(ROOT / "GenFill.pyw"))
+    subprocess.run(args, check=True, cwd=ROOT)
+    print("built:", *sorted(p.name for p in (ROOT / "dist").iterdir()))
+
+
+if __name__ == "__main__":
+    main()

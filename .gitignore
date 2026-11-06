@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+settings.json
+.pytest_cache/
+build/
+dist/
+*.spec
+assets/
+docs/samples/
