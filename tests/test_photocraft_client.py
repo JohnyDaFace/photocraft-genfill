@@ -42,12 +42,13 @@ def token_file(tmp_path):
 
 
 def test_auth_first_then_one_request_per_line(token_file):
-    app = FakeApp(lambda r: {"ok": True, "result": {"width": 10, "height": 20, "selectionBounds": [1, 2, 3, 4]}})
+    # PhotoCraft reports selectionBounds as [x, y, width, height]; DocInfo holds corners
+    app = FakeApp(lambda r: {"ok": True, "result": {"width": 100, "height": 200, "selectionBounds": [10, 20, 30, 40]}})
     with PhotoCraftClient(app.port, token_file, mode="headless") as pc:
         info = pc.document()
     assert app.requests[0]["method"] == "auth" and app.requests[0]["params"] == {"token": TOKEN}
     assert app.requests[1]["params"]["command"] == "document.inspect"
-    assert (info.width, info.height, info.selection) == (10, 20, (1, 2, 3, 4))
+    assert (info.width, info.height, info.selection) == (100, 200, (10, 20, 40, 60))
 
 
 def test_no_selection_is_none(token_file):

@@ -89,8 +89,9 @@ def engine_checks(cli: str, check: _Checker, out: Report) -> None:
         with PhotoCraftClient(port, tok, exchange_dir=root) as pc:
             check("required commands", lambda: _no_problems(pc.compatibility()))
             check("open document", lambda: pc.open_document("doc.png"))
-            check("make selection", lambda: pc.execute("select.rect", {"x": 0, "y": 0, "width": 1080, "height": 285}))
-            check("read size + selection", lambda: _expect(pc.document(), lambda d: d.selection == (0, 0, 1080, 285)))
+            # off the top-left corner on purpose: tells [x, y, w, h] apart from [x0, y0, x1, y1]
+            check("make selection", lambda: pc.execute("select.rect", {"x": 40, "y": 1635, "width": 1000, "height": 285}))
+            check("read size + selection", lambda: _expect(pc.document(), lambda d: d.selection == (40, 1635, 1040, 1920)))
             check("render image with transparency", lambda: _expect(
                 pc.render(), lambda im: im.size == (1080, 1920) and im.getpixel((5, 5))[3] == 0))
             check("place masked layer", lambda: pc.place_layer("result.png", "Generative Fill"))
@@ -124,8 +125,8 @@ def app_checks(s: Settings, check: _Checker, out: Report) -> None:
     with pc:
         check("required commands", lambda: _no_problems(pc.compatibility()))
         check("open test document", lambda: pc.open_document("genfill-compat-test.png"))
-        check("make selection", lambda: pc.execute("select.rect", {"x": 0, "y": 0, "width": 400, "height": 100}))
-        check("read size + selection", lambda: _expect(pc.document(), lambda d: d.selection == (0, 0, 400, 100)))
+        check("make selection", lambda: pc.execute("select.rect", {"x": 40, "y": 20, "width": 300, "height": 60}))
+        check("read size + selection", lambda: _expect(pc.document(), lambda d: d.selection == (40, 20, 340, 80)))
         check("export image with transparency", lambda: _expect(
             pc.render(), lambda im: im.size == (400, 600) and im.getpixel((5, 5))[3] == 0))
         check("paste result as masked layer", lambda: pc.place_layer("genfill-compat-result.png", "Generative Fill"))

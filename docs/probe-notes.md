@@ -1,6 +1,6 @@
 # PhotoCraft 0.20.2 control probe (2026-11-06, headless `photocraft-cli serve`)
 
-- `doc.inspect {}` → `width`, `height`, `hasSelection`, `selectionBounds: [x0, y0, x1, y1] | null`, `layers[]`, `activeLayer`.
+- `doc.inspect {}` → `width`, `height`, `hasSelection`, `selectionBounds: [x, y, width, height] | null` (same in the desktop app; layer `bounds` too; first noted wrongly as corners, which only looked right for selections at 0,0), `layers[]`, `activeLayer`.
 - `doc.render {maxSide: 0}` → `{base64}` full-size RGBA PNG; transparent canvas stays alpha 0.
 - `engine.execute select.rect {x, y, width, height, mode?: "add"}` (no `rect` array).
 - `doc.place {path}` (relative to read root) → Smart Object at `bounds [0,0,W,H]`, `scale 100` when the PNG is document-sized; selection kept.

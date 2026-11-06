@@ -140,8 +140,11 @@ class PhotoCraftClient:
 
     def document(self) -> DocInfo:
         r = self._inspect()
-        sel = r.get("selectionBounds")
-        return DocInfo(int(r["width"]), int(r["height"]), tuple(int(v) for v in sel) if sel else None)
+        sel = r.get("selectionBounds")  # PhotoCraft reports [x, y, width, height]; DocInfo holds corners
+        if not sel:
+            return DocInfo(int(r["width"]), int(r["height"]), None)
+        x, y, w, h = (int(v) for v in sel)
+        return DocInfo(int(r["width"]), int(r["height"]), (x, y, x + w, y + h))
 
     def render(self) -> Image.Image:
         """The full-size composite as RGBA (transparent canvas stays transparent)."""
