@@ -98,6 +98,10 @@ def engine_checks(cli: str, check: _Checker, out: Report) -> None:
             check("new layer is masked and named", lambda: _expect(
                 pc.execute("document.inspect")["layers"],
                 lambda ls: ls[0]["name"] == "Generative Fill" and ls[0]["hasMask"]))
+            check("place whole-image layer (Edit)", lambda: pc.place_layer("result.png", "Edit", masked=False))
+            check("edit layer is unmasked, nothing selected", lambda: _expect(
+                pc.execute("document.inspect"),
+                lambda d: d["layers"][0]["name"] == "Edit" and not d["layers"][0]["hasMask"] and not d["hasSelection"]))
             check("open result as new document (Upscale)", lambda: pc.open_document("result.png"))
     except PhotoCraftError as e:
         check("start background engine", lambda: (_ for _ in ()).throw(e))
@@ -133,6 +137,11 @@ def app_checks(s: Settings, check: _Checker, out: Report) -> None:
         check("new layer is masked and named", lambda: _expect(
             pc.execute("document.inspect")["layers"],
             lambda ls: ls[0]["name"] == "Generative Fill" and ls[0]["hasMask"]))
+        check("paste whole-image layer (Edit)",
+              lambda: pc.place_layer("genfill-compat-result.png", "Edit", masked=False))
+        check("edit layer is unmasked, nothing selected", lambda: _expect(
+            pc.execute("document.inspect"),
+            lambda d: d["layers"][0]["name"] == "Edit" and not d["layers"][0]["hasMask"] and not d["hasSelection"]))
         try:
             if pc.execute("document.inspect").get("name") == "genfill-compat-test.png":
                 pc.execute("file.close", {"save": "discard"})

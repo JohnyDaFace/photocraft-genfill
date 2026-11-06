@@ -27,12 +27,14 @@ _COMMON = {
     "rename layer": ["layer.renameLayer"],
     "expand selection": ["select.modify.expand"],
     "feather selection": ["select.modify.feather"],
+    "select all": ["select.all"],
+    "deselect": ["select.deselect"],
 }
 REQUIRED_COMMANDS = {
     "headless": {**_COMMON, "rasterize placed layer": ["layer.rasterize.smartObject", "layer.smartObjects.rasterize"]},
     "desktop": {**_COMMON,
                 "save selection": ["select.saveSelection"], "load selection": ["select.loadSelection"],
-                "delete channel": ["channel.delete"], "select all": ["select.all"], "copy": ["edit.copy"],
+                "delete channel": ["channel.delete"], "copy": ["edit.copy"],
                 "paste in place": ["edit.pasteSpecial.pasteInPlace"], "close document": ["file.close"]},
 }
 SELECTION_CHANNEL = "genfill-selection"
@@ -168,19 +170,28 @@ class PhotoCraftClient:
             except OSError:
                 pass
 
-    def place_layer(self, rel_path: str, name: str) -> None:
+    def place_layer(self, rel_path: str, name: str, masked: bool = True) -> None:
         """Add a document-sized PNG (relative to the exchange folder) as a new pixel layer above the
-        active one, masked to the current selection."""
+        active one, masked to the current selection (`masked=False`: the whole layer, no mask, and
+        nothing left selected)."""
+        if not masked:
+            self.execute(self._cmd("select all"))  # the desktop paste route saves and restores a selection
         if self.mode == "headless":
             self.call("doc.place", {"path": rel_path})
             self.execute(self._cmd("rasterize placed layer"))
         else:
             self._paste_in_place(rel_path)
-        # Reach a little into the original with a soft edge; the layer's own pixels fade from the
-        # exact original to the generated ones inside that band, so no hard line shows.
-        self.execute(self._cmd("expand selection"), {"radius": LAYER_MASK_EXPAND})
-        self.execute(self._cmd("feather selection"), {"radius": LAYER_MASK_FEATHER})
-        self.execute(self._cmd("mask layer to selection"))
+        if masked:
+            # Reach a little into the original with a soft edge; the layer's own pixels fade from the
+            # exact original to the generated ones inside that band, so no hard line shows.
+            self.execute(self._cmd("expand selection"), {"radius": LAYER_MASK_EXPAND})
+            self.execute(self._cmd("feather selection"), {"radius": LAYER_MASK_FEATHER})
+            self.execute(self._cmd("mask layer to selection"))
+        else:
+            try:
+                self.execute(self._cmd("deselect"))
+            except PhotoCraftError:
+                pass  # PhotoCraft refuses when nothing is selected any more; that's the goal anyway
         try:
             self.execute(self._cmd("rename layer"), {"name": name})
         except PhotoCraftError:

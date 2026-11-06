@@ -1,12 +1,14 @@
 # Generative Fill for PhotoCraft
 
-A small always-on-top window that adds two AI tools to [PhotoCraft](https://github.com/storytold/photocraft),
+A small always-on-top window that adds AI tools to [PhotoCraft](https://github.com/storytold/photocraft),
 running entirely on your own computer through [ComfyUI](https://github.com/comfyanonymous/ComfyUI) and
 FLUX.2 [klein]:
 
 - **Generate** fills a selected area, like Photoshop's Generative Fill / Generative Expand. Enlarge the canvas
   (say 1080×1350 → 1080×1920), select the empty part, click Generate. The result arrives as a **new masked
-  layer**; your original layers are never changed.
+  layer**; your original layers are never changed. You get several versions to choose from.
+- **Edit** (Generate with nothing selected) changes the whole image as you describe it: "make it night",
+  "change the jacket to red", "turn it into a watercolour". Everything you don't mention stays the same.
 - **Upscale** (2× or 4×) redraws the whole image larger with new detail and opens it as a new document.
 
 Nothing is uploaded anywhere: the window talks only to PhotoCraft and ComfyUI on your own machine.
@@ -63,10 +65,23 @@ Download the file for your computer from the **Releases** page of this repositor
 
 ## Use
 
-**Generate**
-1. In PhotoCraft: Image › Canvas Size to enlarge, then select the empty area (hold Shift to add more areas).
-2. In the window: optionally type what should appear, then click **Generate** (about 20–60 seconds).
-3. A new layer "Generative Fill" appears with a soft mask. Paint on the mask to adjust, or Undo to remove it.
+**Generate (fill a selection)**
+1. In PhotoCraft: select what to fill: the empty area after Image › Canvas Size, or something to replace or
+   remove (hold Shift to add more areas).
+2. In the window: optionally type what should appear ("remove it" works for taking things away), choose how many
+   results you want (1–4, next to Generate), then click **Generate** (about 15–30 seconds per result).
+3. With more than one result, a **Choose a result** window shows them side by side: click the one you like (or
+   press 1–4). **Discard all** adds nothing. With 1 result it goes straight in.
+4. A new layer "Generative Fill" appears with a soft mask. Paint on the mask to adjust, or Undo to remove it.
+
+Keep the selection as it is while choosing; if it changes, the window asks you to put it back or Generate again
+so the result can't land in the wrong place.
+
+**Edit (whole image)**: deselect everything (Select › Deselect), type the change ("make it night, moonlight",
+"change the car to red"), click **Generate**. The edited image arrives as a new layer named "Edit" above your
+original, so you can lower its opacity, mask parts of it, or delete it. Edits are made at about 1 megapixel and
+scaled to your image's size, so on large photos they are softer than the original; use **Upscale** afterwards or
+mask the edit to where it matters. To change just one part, select it and use Generate with a prompt instead.
 
 **Upscale**: choose 2× or 4× and click **Upscale**. The bigger image opens as a new document; the original is
 untouched.
@@ -83,6 +98,8 @@ port, and:
   OK/FAIL for each. It may open and close a test tab; your open documents are not touched. The window also checks
   at startup and refuses to run a step PhotoCraft no longer supports rather than do something unexpected.
 - **Undo PhotoCraft setup**: removes the connection settings again.
+
+The number of results per Generate is chosen in the main window and remembered.
 
 ## Troubleshooting
 

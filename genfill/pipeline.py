@@ -1,17 +1,21 @@
-"""The two jobs: Generate (fill the selection) and Upscale (new, larger document)."""
+"""The jobs: Generate (fill the selection, or edit the whole image when nothing is selected; one or
+more candidates to choose from) and Upscale (new, larger document)."""
 from __future__ import annotations
 
 import random
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 from PIL import Image
 
 from . import imaging
-from .comfy import ComfyClient, ComfyError, build_fill_workflow, build_refine_workflow
+from .comfy import ComfyClient, ComfyError, build_edit_workflow, build_fill_workflow, build_refine_workflow
 from .photocraft_client import PhotoCraftClient, PhotoCraftError
 from .settings import Settings
+
+MAX_VARIATIONS = 4
 
 Status = Callable[[str], None]
 Progress = Callable[[float | None], None]
@@ -40,9 +44,39 @@ def _exchange(settings: Settings, prefix: str) -> tuple[Path, str]:
     return d / name, name
 
 
-def run_fill(prompt: str, settings: Settings, status: Status, progress: Progress, cancel,
-             pc=None, comfy=None) -> str:
+PREVIEW_SIDE = 240
+
+
+@dataclass
+class Results:
+    """Finished candidates for one Generate, waiting to be placed. `images` are document-sized RGBA."""
+    images: list[Image.Image]
+    previews: list[Image.Image]
+    layer: str
+    masked: bool                      # fill: masked to the selection; edit: whole layer
+    size: tuple[int, int]
+    selection: tuple[int, int, int, int] | None
+
+
+def _preview(img: Image.Image, box: tuple[int, int, int, int] | None) -> Image.Image:
+    """The part worth comparing: the selection plus some surroundings (whole image for an edit)."""
+    if box:
+        x0, y0, x1, y1 = box
+        mx, my = max(32, (x1 - x0) // 4), max(32, (y1 - y0) // 4)
+        img = img.crop((max(0, x0 - mx), max(0, y0 - my), min(img.width, x1 + mx), min(img.height, y1 + my)))
+    flat = Image.new("RGB", img.size, (128, 128, 128))
+    flat.paste(img, mask=img.getchannel("A"))
+    flat.thumbnail((PREVIEW_SIDE, PREVIEW_SIDE), Image.LANCZOS)
+    return flat
+
+
+def generate(prompt: str, settings: Settings, status: Status, progress: Progress, cancel,
+             pc=None, comfy=None, count: int | None = None) -> Results:
+    """With a selection: fill it. Without one: edit the whole picture as the prompt says.
+    Makes `count` (default settings.variations) candidates with different seeds."""
     pc, comfy = _clients(settings, pc, comfy)
+    prompt = prompt.strip()
+    count = max(1, min(MAX_VARIATIONS, count or settings.variations))
     try:
         status("Reading the image from PhotoCraft…")
         with pc:
@@ -50,31 +84,79 @@ def run_fill(prompt: str, settings: Settings, status: Status, progress: Progress
             if problems:
                 raise UserFacingError("This PhotoCraft version isn't compatible yet: " + " ".join(problems))
             doc = pc.document()
-            if doc.selection is None:
-                raise UserFacingError("Make a selection first (for example, the empty area of the canvas).")
+            if doc.selection is None and not prompt:
+                raise UserFacingError("Make a selection first to fill it, or type what to change (for example "
+                                      "'make it night') to edit the whole image.")
             image = pc.render()
-        mask = imaging.fill_mask(image, doc.selection)
-        if not mask.getbbox():
+        edit = doc.selection is None
+        mask = None if edit else imaging.fill_mask(image, doc.selection)
+        if mask is not None and not mask.getbbox():
             raise UserFacingError("The selection is outside the canvas.")
         ww, wh = imaging.working_size(image.width, image.height, settings.megapixels)
         status("Sending to ComfyUI…")
         comfy.check()
-        src_name = comfy.upload(imaging.prepare_source(image).resize((ww, wh), Image.LANCZOS), "genfill_src.png")
-        mask_name = comfy.upload(mask.resize((ww, wh), Image.BILINEAR).convert("RGB"), "genfill_mask.png")
-        status("Generating with Flux 2 Klein… (first run loads the model)")
-        wf = build_fill_workflow(src_name, mask_name, prompt.strip(), random.randint(0, 2**32 - 1),
-                                 settings.steps, ww, wh, settings.models)
-        generated = comfy.run(wf, progress, cancel)
-        status("Placing the result in PhotoCraft…")
-        path, rel = _exchange(settings, "fill")
-        generated = imaging.match_colors(image, generated, mask)
-        imaging.merge(image, generated, imaging.blend_mask(image, doc.selection)).save(path)
-        layer = "Generative Fill" + (f" – {prompt.strip()[:40]}" if prompt.strip() else "")
-        with pc:
-            pc.place_layer(rel, layer)
-        return layer
+        if edit:
+            flat = Image.new("RGB", image.size, (255, 255, 255))
+            flat.paste(image, mask=image.getchannel("A"))
+            src_name = comfy.upload(flat.resize((ww, wh), Image.LANCZOS), "genfill_src.png")
+        else:
+            src_name = comfy.upload(imaging.prepare_source(image).resize((ww, wh), Image.LANCZOS), "genfill_src.png")
+            mask_name = comfy.upload(mask.resize((ww, wh), Image.BILINEAR).convert("RGB"), "genfill_mask.png")
+        images = []
+        for i in range(count):
+            if cancel.is_set():
+                raise UserFacingError("Cancelled.")
+            what = "Editing the image" if edit else "Generating"
+            status(f"{what} with Flux 2 Klein" + (f" ({i + 1} of {count})" if count > 1 else "") + "…"
+                   + (" (first run loads the model)" if i == 0 else ""))
+            if count > 1:
+                progress(i / count)
+            seed = random.randint(0, 2**32 - 1)
+            if edit:
+                wf = build_edit_workflow(src_name, prompt, seed, settings.steps, ww, wh, settings.models)
+                out = comfy.run(wf, progress if count == 1 else (lambda _f: None), cancel)
+                out = out.resize(image.size, Image.LANCZOS).convert("RGBA")
+                out.putalpha(image.getchannel("A"))  # transparent stays transparent
+            else:
+                wf = build_fill_workflow(src_name, mask_name, prompt, seed, settings.steps, ww, wh, settings.models)
+                out = comfy.run(wf, progress if count == 1 else (lambda _f: None), cancel)
+                out = imaging.match_colors(image, out, mask)
+                out = imaging.merge(image, out, imaging.blend_mask(image, doc.selection))
+            images.append(out)
+        progress(1.0)
+        name = ("Edit" if edit else "Generative Fill") + (f" – {prompt[:40]}" if prompt else "")
+        return Results(images, [_preview(im, doc.selection) for im in images], name, not edit,
+                       (image.width, image.height), doc.selection)
     except (PhotoCraftError, ComfyError) as e:
         raise UserFacingError(str(e)) from e
+
+
+def place(results: Results, index: int, settings: Settings, pc=None) -> str:
+    """Add the chosen candidate to PhotoCraft as a layer. Refuses if the document or the selection
+    changed while the user was choosing (the mask is made from the selection at this moment)."""
+    pc, _ = _clients(settings, pc, object())
+    try:
+        with pc:
+            pc.compatibility()  # resolves the command names for this PhotoCraft
+            doc = pc.document()
+            if (doc.width, doc.height) != results.size or (results.masked and doc.selection != results.selection):
+                raise UserFacingError("The document or the selection changed since Generate, so the result "
+                                      "would land in the wrong place. Put it back or Generate again.")
+            path, rel = _exchange(settings, "fill" if results.masked else "edit")
+            results.images[index].save(path)
+            pc.place_layer(rel, results.layer, masked=results.masked)
+        return results.layer
+    except PhotoCraftError as e:
+        raise UserFacingError(str(e)) from e
+
+
+def run_fill(prompt: str, settings: Settings, status: Status, progress: Progress, cancel,
+             pc=None, comfy=None) -> str:
+    """Generate one candidate and place it (no picking)."""
+    pc, comfy = _clients(settings, pc, comfy)
+    results = generate(prompt, settings, status, progress, cancel, pc=pc, comfy=comfy, count=1)
+    status("Placing the result in PhotoCraft…")
+    return place(results, 0, settings, pc=pc)
 
 
 def run_upscale(prompt: str, settings: Settings, status: Status, progress: Progress, cancel,

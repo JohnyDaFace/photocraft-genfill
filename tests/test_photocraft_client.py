@@ -90,13 +90,13 @@ def _commands_app(ids):
 
 
 def test_compatibility_ok_with_current_names(token_file):
-    app = _commands_app(["document.inspect", "select.modify.expand", "select.modify.feather", "layer.rasterize.smartObject", "layer.layerMask.revealSelection", "layer.renameLayer"])
+    app = _commands_app(["document.inspect", "select.all", "select.deselect", "select.modify.expand", "select.modify.feather", "layer.rasterize.smartObject", "layer.layerMask.revealSelection", "layer.renameLayer"])
     with PhotoCraftClient(app.port, token_file, mode="headless") as pc:
         assert pc.compatibility() == []
 
 
 def test_compatibility_uses_alternative_name(token_file):
-    app = _commands_app(["document.inspect", "select.modify.expand", "select.modify.feather", "layer.smartObjects.rasterize", "layer.layerMask.revealSelection", "layer.renameLayer"])
+    app = _commands_app(["document.inspect", "select.all", "select.deselect", "select.modify.expand", "select.modify.feather", "layer.smartObjects.rasterize", "layer.layerMask.revealSelection", "layer.renameLayer"])
     with PhotoCraftClient(app.port, token_file, mode="headless") as pc:
         assert pc.compatibility() == []
         pc.place_layer("x.png", "n")
@@ -104,7 +104,7 @@ def test_compatibility_uses_alternative_name(token_file):
 
 
 def test_compatibility_reports_missing_command(token_file):
-    app = _commands_app(["document.inspect", "select.modify.expand", "select.modify.feather", "layer.rasterize.smartObject", "layer.renameLayer"])
+    app = _commands_app(["document.inspect", "select.all", "select.deselect", "select.modify.expand", "select.modify.feather", "layer.rasterize.smartObject", "layer.renameLayer"])
     with PhotoCraftClient(app.port, token_file, mode="headless") as pc:
         problems = pc.compatibility()
     assert len(problems) == 1 and "layer.layerMask.revealSelection" in problems[0]
@@ -200,3 +200,20 @@ def test_busy_clipboard_is_retried(token_file, tmp_path):
     with PhotoCraftClient(fake.app.port, token_file, exchange_dir=tmp_path) as pc:
         pc.place_layer("fill_1.png", "Generative Fill")
     assert fake.commands().count("edit.pasteSpecial.pasteInPlace") == 4
+
+
+def test_unmasked_place_selects_all_then_deselects(token_file):
+    app = FakeApp(lambda r: {"ok": True, "result": {}})
+    with PhotoCraftClient(app.port, token_file, mode="headless") as pc:
+        pc.place_layer("edit_1.png", "Edit", masked=False)
+    seq = [(r["params"] or {}).get("command") or r["method"] for r in app.requests[1:]]
+    assert seq == ["select.all", "doc.place", "layer.rasterize.smartObject", "select.deselect", "layer.renameLayer"]
+
+
+def test_desktop_unmasked_place_has_no_mask(token_file, tmp_path):
+    fake = FakeDesktop(tmp_path)
+    with PhotoCraftClient(fake.app.port, token_file, exchange_dir=tmp_path) as pc:
+        pc.place_layer("edit_1.png", "Edit", masked=False)
+    cmds = fake.commands()
+    assert cmds[2] == "select.all" and "layer.layerMask.revealSelection" not in cmds
+    assert cmds[-2:] == ["select.deselect", "layer.renameLayer"]

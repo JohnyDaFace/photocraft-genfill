@@ -105,3 +105,18 @@ def test_available_models_reads_new_combo_format(monkeypatch):
                                                           "clip_name": ["COMBO", {"options": ["c"]}],
                                                           "vae_name": [["v"]]}}}})
     assert c.available_models() == {"unet": ["a", "b"], "clip": ["c"], "vae": ["v"]}
+
+
+def test_edit_workflow_redraws_whole_image_from_reference():
+    from genfill.comfy import build_edit_workflow
+    wf = build_edit_workflow("img.png", "make it night", seed=3, steps=4, width=1024, height=768, models=MODELS)
+    json.dumps(wf)
+    by_type = {n["class_type"]: n["inputs"] for n in wf.values()}
+    assert "SetLatentNoiseMask" not in by_type and "LoadImageMask" not in by_type
+    assert by_type["ReferenceLatent"]["latent"] == ["encode", 0]
+    assert by_type["SamplerCustomAdvanced"]["sigmas"] == ["sigmas", 0]  # full denoise
+    assert by_type["CLIPTextEncode"]["text"] == "make it night"
+    for node in wf.values():
+        for v in node["inputs"].values():
+            if isinstance(v, list) and len(v) == 2 and isinstance(v[0], str):
+                assert v[0] in wf, f"dangling link {v}"

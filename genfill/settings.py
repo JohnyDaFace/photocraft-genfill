@@ -59,6 +59,7 @@ class Settings:
     comfy_url: str = "http://127.0.0.1:8188"
     photocraft_cli: str = ""  # empty = find it automatically
     steps: int = 4
+    variations: int = 3  # candidates per Generate (1 = place straight away, no choosing)
     megapixels: float = 1.0
     upscale_factor: int = 2
     upscale_denoise: float = 0.3

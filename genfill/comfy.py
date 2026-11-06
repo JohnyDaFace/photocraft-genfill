@@ -83,6 +83,23 @@ def build_fill_workflow(image_name: str, mask_name: str, prompt: str, seed: int,
     return wf
 
 
+def build_edit_workflow(image_name: str, prompt: str, seed: int, steps: int,
+                        width: int, height: int, models: dict) -> dict:
+    """Instruction edit of the whole picture ("make it night", "change the jacket to red"): Klein
+    redraws the image from full noise while following its reference, so what the prompt doesn't
+    mention stays the same."""
+    wf = _loaders(models)
+    wf.update({
+        "image": {"class_type": "LoadImage", "inputs": {"image": image_name}},
+        "encode": {"class_type": "VAEEncode", "inputs": {"pixels": ["image", 0], "vae": ["vae", 0]}},
+        "text": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["clip", 0]}},
+        "ref": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["text", 0], "latent": ["encode", 0]}},
+        "sigmas": {"class_type": "Flux2Scheduler", "inputs": {"steps": steps, "width": width, "height": height}},
+    })
+    wf.update(_sampling(["encode", 0], ["ref", 0], seed, ["sigmas", 0], "genfill_edit"))
+    return wf
+
+
 UPSCALE_PROMPT = ("Same photo, same composition and colours, crisp high-resolution detail, sharp textures, "
                   "clean edges, no artifacts.")
 

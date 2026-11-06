@@ -12,7 +12,8 @@ from tkinter import messagebox, ttk
 from . import setup_env, theme
 from .comfy import ComfyClient, ComfyError
 from .photocraft_client import PhotoCraftClient, PhotoCraftError
-from .pipeline import UserFacingError, run_fill, run_upscale
+from .picker import Picker
+from .pipeline import MAX_VARIATIONS, UserFacingError, generate, place, run_upscale
 from .settings import SETTINGS_FILE, Settings
 from .settings_dialog import SettingsDialog
 
@@ -31,6 +32,7 @@ class App:
         self.theme_name = self.settings.last_theme
         self.prompt_text = tk.StringVar()
         self.factor = tk.StringVar(value=f"{self.settings.upscale_factor}×")
+        self.variations = tk.StringVar(value=self._variations_label(self.settings.variations))
         self.status = tk.StringVar(value="Checking connections…")
 
         root.title(TITLE)
@@ -61,30 +63,53 @@ class App:
         fr.pack(fill="both", expand=True)
         fr.columnconfigure(0, weight=1)
 
-        tk.Label(fr, text="Prompt (optional)", bg=p.chrome, fg=p.text_dim, font=f["small"]).grid(
-            row=0, column=0, columnspan=3, sticky="w")
-        self.prompt = ttk.Entry(fr, textvariable=self.prompt_text, style="PC.TEntry", font=f["body"])
-        self.prompt.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(4, 12))
-        self.prompt.bind("<Return>", lambda e: self.start("fill"))
+        def section(row: int, title: str, hint: str) -> tk.Frame:
+            head = tk.Frame(fr, bg=p.chrome)
+            head.grid(row=row, column=0, sticky="ew")
+            tk.Label(head, text=title.upper(), bg=p.chrome, fg=p.text, font=f["button"]).pack(side="left")
+            tk.Label(head, text=hint, bg=p.chrome, fg=p.text_faint, font=f["small"]).pack(side="left", padx=(8, 0))
+            body = tk.Frame(fr, bg=p.chrome)
+            body.grid(row=row + 1, column=0, sticky="ew", pady=(6, 0))
+            body.columnconfigure(0, weight=1)
+            return body
 
-        self.gen_btn = theme.PillButton(fr, "Generate", lambda: self.start("fill"), p, f["button"], kind="primary",
+        def rule(row: int) -> None:
+            tk.Frame(fr, bg=p.separator, height=1).grid(row=row, column=0, sticky="ew", pady=12)
+
+        # Generate: fill the selection, or edit the whole image when nothing is selected
+        gen = section(0, "Generate", "fills the selection · nothing selected = edits the whole image")
+        tk.Label(gen, text="Prompt (optional when filling)", bg=p.chrome, fg=p.text_dim,
+                 font=f["small"]).grid(row=0, column=0, columnspan=2, sticky="w")
+        self.prompt = ttk.Entry(gen, textvariable=self.prompt_text, style="PC.TEntry", font=f["body"])
+        self.prompt.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(4, 10))
+        self.prompt.bind("<Return>", lambda e: self.start("fill"))
+        ttk.Combobox(gen, textvariable=self.variations, width=9, state="readonly", style="PC.TCombobox",
+                     font=f["body"], values=[self._variations_label(n) for n in range(1, MAX_VARIATIONS + 1)]
+                     ).grid(row=2, column=0, sticky="w")
+        self.gen_btn = theme.PillButton(gen, "Generate", lambda: self.start("fill"), p, f["button"], kind="primary",
                                         min_width=96)
-        self.gen_btn.grid(row=2, column=0, sticky="w")
-        ttk.Combobox(fr, textvariable=self.factor, values=["2×", "4×"], width=4, state="readonly",
-                     style="PC.TCombobox", font=f["body"]).grid(row=2, column=1, padx=(0, 8))
-        self.up_btn = theme.PillButton(fr, "Upscale", lambda: self.start("upscale"), p, f["button"])
-        self.up_btn.grid(row=2, column=2, sticky="e")
+        self.gen_btn.grid(row=2, column=1, sticky="e")
+        rule(2)
+
+        # Upscale: a bigger copy as a new document
+        up = section(3, "Upscale", "bigger copy with new detail, opens as a new document")
+        tk.Label(up, text="Size", bg=p.chrome, fg=p.text_dim, font=f["small"]).grid(row=0, column=0, sticky="w")
+        ttk.Combobox(up, textvariable=self.factor, values=["2×", "4×"], width=4, state="readonly",
+                     style="PC.TCombobox", font=f["body"]).grid(row=0, column=0, sticky="w", padx=(34, 0))
+        self.up_btn = theme.PillButton(up, "Upscale", lambda: self.start("upscale"), p, f["button"], min_width=96)
+        self.up_btn.grid(row=0, column=1, sticky="e")
+        rule(5)
 
         self.bar = ttk.Progressbar(fr, mode="determinate", value=0, style="PC.Horizontal.TProgressbar")
-        self.bar.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(14, 8))
+        self.bar.grid(row=6, column=0, sticky="ew", pady=(0, 8))
         self.status_label = tk.Label(fr, textvariable=self.status, bg=p.chrome, fg=p.text_dim, font=f["small"],
                                      justify="left", anchor="w", wraplength=370)
-        self.status_label.grid(row=4, column=0, columnspan=3, sticky="ew")
+        self.status_label.grid(row=7, column=0, sticky="ew")
         fr.bind("<Configure>", lambda e: self.status_label.configure(wraplength=max(200, e.width - 30)))
 
-        tk.Frame(fr, bg=p.separator, height=1).grid(row=5, column=0, columnspan=3, sticky="ew", pady=(12, 8))
+        tk.Frame(fr, bg=p.separator, height=1).grid(row=8, column=0, sticky="ew", pady=(12, 8))
         bottom = tk.Frame(fr, bg=p.chrome)
-        bottom.grid(row=6, column=0, columnspan=3, sticky="ew")
+        bottom.grid(row=9, column=0, sticky="ew")
         self.cancel_btn = theme.PillButton(bottom, "Cancel", self.cancel.set, p, f["small"], kind="quiet",
                                            height=22, min_width=56)
         self.cancel_btn.pack(side="left")
@@ -140,19 +165,41 @@ class App:
         self.settings.last_theme = self.theme_name
         if job == "upscale":
             self.settings.upscale_factor = int(self.factor.get().rstrip("×"))
+        else:
+            n = int(self.variations.get().split()[0])
+            if n != self.settings.variations:
+                self.settings.variations = n
+                self.settings.save()  # remembered for next time
         self.busy = True
         self.cancel.clear()
         self._sync_buttons()
         self.bar.configure(mode="indeterminate")
         self.bar.start(12)
-        fn = run_fill if job == "fill" else run_upscale
-        threading.Thread(target=self._work, args=(fn, self.prompt_text.get()), daemon=True).start()
+        fn = self._generate if job == "fill" else run_upscale
+        prompt = self.prompt_text.get() if job == "fill" else ""  # the prompt belongs to Generate
+        threading.Thread(target=self._work, args=(fn, prompt), daemon=True).start()
+
+    @staticmethod
+    def _variations_label(n: int) -> str:
+        return f"{n} result" + ("s" if n > 1 else "")
+
+    def _generate(self, prompt, settings, status, progress, cancel):
+        results = generate(prompt, settings, status, progress, cancel)
+        if len(results.images) > 1:
+            self.events.put(("pick", results))
+            return None  # the picker takes it from here
+        status("Placing the result in PhotoCraft…")
+        return place(results, 0, settings)
+
+    def _place(self, results, index: int) -> None:
+        self._work(lambda *_a: place(results, index, self.settings), "")
 
     def _work(self, fn, prompt: str) -> None:
         try:
             result = fn(prompt, self.settings, lambda s: self.events.put(("status", s)),
                         lambda f: self.events.put(("progress", f)), self.cancel)
-            self.events.put(("done", f"Done: {result}. (Ctrl+Z in PhotoCraft removes it.)"))
+            if result is not None:
+                self.events.put(("done", f"Done: {result}. (Ctrl+Z in PhotoCraft removes it.)"))
         except UserFacingError as e:
             self.events.put(("done", str(e)))
         except Exception as e:  # never die silently
@@ -169,6 +216,8 @@ class App:
                 elif kind == "progress" and value is not None:
                     self.bar.stop()
                     self.bar.configure(mode="determinate", value=value * 100)
+                elif kind == "pick":
+                    self.choose(value)
                 elif kind == "done":
                     self.status.set(value)
                     self.finish()
@@ -181,6 +230,22 @@ class App:
         self.bar.stop()
         self.bar.configure(mode="determinate", value=0)
         self._sync_buttons()
+
+    def choose(self, results) -> None:
+        self.bar.stop()
+        self.bar.configure(mode="determinate", value=100)
+        self.status.set(f"{len(results.images)} results ready: pick one in the 'Choose a result' window.")
+
+        def picked(i: int) -> None:
+            self.status.set(f"Placing result {i + 1} in PhotoCraft…")
+            self.bar.configure(mode="indeterminate")
+            self.bar.start(12)
+            threading.Thread(target=self._place, args=(results, i), daemon=True).start()
+
+        def discarded() -> None:
+            self.status.set("Discarded. Nothing was added to PhotoCraft.")
+            self.finish()
+        Picker(self.root, results, self.p, self.fonts, picked, discarded)
 
     # -- buttons -------------------------------------------------------------------------------
     def setup(self) -> None:
