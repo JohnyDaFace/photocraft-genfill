@@ -60,8 +60,22 @@ def _sampling(latent: list, positive: list, seed: int, sigmas: list, out_prefix:
     }
 
 
+def _add_references(wf: dict, conditioning: list, images: list[str]) -> list:
+    """Chain one ReferenceLatent per extra image after `conditioning` (Klein sees them as image 2, 3…);
+    returns the conditioning to sample with."""
+    for i, name in enumerate(images, 2):
+        wf[f"extra{i}_image"] = {"class_type": "LoadImage", "inputs": {"image": name}}
+        wf[f"extra{i}_encode"] = {"class_type": "VAEEncode",
+                                  "inputs": {"pixels": [f"extra{i}_image", 0], "vae": ["vae", 0]}}
+        wf[f"extra{i}_ref"] = {"class_type": "ReferenceLatent",
+                               "inputs": {"conditioning": conditioning, "latent": [f"extra{i}_encode", 0]}}
+        conditioning = [f"extra{i}_ref", 0]
+    return conditioning
+
+
 def build_fill_workflow(image_name: str, mask_name: str, prompt: str, seed: int, steps: int,
-                        width: int, height: int, models: dict, ref_name: str | None = None) -> dict:
+                        width: int, height: int, models: dict, ref_name: str | None = None,
+                        extra_refs: list[str] = ()) -> dict:
     """Generate only inside the mask. The reference shown to Klein is `ref_name` (the real picture
     only) when given: Klein is an edit model and copies its reference, so a reference that contains
     the blurry pre-fill gets the blur copied into the result."""
@@ -79,12 +93,13 @@ def build_fill_workflow(image_name: str, mask_name: str, prompt: str, seed: int,
     if ref_name:
         wf["ref_image"] = {"class_type": "LoadImage", "inputs": {"image": ref_name}}
         wf["ref_encode"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["ref_image", 0], "vae": ["vae", 0]}}
-    wf.update(_sampling(["masked", 0], ["ref", 0], seed, ["sigmas", 0], "genfill"))
+    wf.update(_sampling(["masked", 0], _add_references(wf, ["ref", 0], list(extra_refs)), seed, ["sigmas", 0],
+                        "genfill"))
     return wf
 
 
 def build_edit_workflow(image_name: str, prompt: str, seed: int, steps: int,
-                        width: int, height: int, models: dict) -> dict:
+                        width: int, height: int, models: dict, extra_refs: list[str] = ()) -> dict:
     """Instruction edit of the whole picture ("make it night", "change the jacket to red"): Klein
     redraws the image from full noise while following its reference, so what the prompt doesn't
     mention stays the same."""
@@ -96,7 +111,8 @@ def build_edit_workflow(image_name: str, prompt: str, seed: int, steps: int,
         "ref": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["text", 0], "latent": ["encode", 0]}},
         "sigmas": {"class_type": "Flux2Scheduler", "inputs": {"steps": steps, "width": width, "height": height}},
     })
-    wf.update(_sampling(["encode", 0], ["ref", 0], seed, ["sigmas", 0], "genfill_edit"))
+    wf.update(_sampling(["encode", 0], _add_references(wf, ["ref", 0], list(extra_refs)), seed, ["sigmas", 0],
+                        "genfill_edit"))
     return wf
 
 

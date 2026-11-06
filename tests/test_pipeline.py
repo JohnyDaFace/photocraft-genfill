@@ -146,3 +146,45 @@ def test_place_refuses_when_selection_changed(tmp_path):
     with pytest.raises(UserFacingError, match="selection changed"):
         place(r, 0, _settings(tmp_path), pc=pc)
     assert pc.placed == []
+
+
+def test_reference_is_uploaded_and_used(tmp_path):
+    pc, comfy = FakePC(_doc(), (0, 0, 1080, 285)), FakeComfy()
+    seen = []
+    run = comfy.run
+    comfy.run = lambda wf, p, c: (seen.append(wf), run(wf, p, c))[1]
+    _gen_ref = generate("the logo from image 2", _settings(tmp_path), lambda s: None, lambda f: None,
+                        threading.Event(), pc=pc, comfy=comfy, count=1,
+                        reference=Image.new("RGB", (3000, 2000), (1, 2, 3)))
+    assert len(comfy.uploads) == 3                      # source, mask, reference
+    w, h = comfy.uploads[2]
+    assert w % 16 == 0 and h % 16 == 0 and w * h <= 1_100_000
+    assert "extra2_ref" in seen[0]
+
+
+def test_remove_needs_a_selection(tmp_path):
+    comfy = FakeComfy()
+    with pytest.raises(UserFacingError, match="Select what to remove"):
+        generate("", _settings(tmp_path), lambda s: None, lambda f: None, threading.Event(),
+                 pc=FakePC(_doc(), None), comfy=comfy, remove=True)
+    assert comfy.runs == 0
+
+
+def test_remove_prompt_and_layer_name(tmp_path):
+    from genfill.pipeline import remove_prompt
+    assert remove_prompt("basket").startswith("Remove the basket completely")
+    assert remove_prompt("").startswith("Remove the object completely")
+    assert remove_prompt("a lamp.").startswith("Remove a lamp completely")
+    pc = FakePC(_doc(), (0, 300, 500, 600))
+    r = generate("basket", _settings(tmp_path), lambda s: None, lambda f: None, threading.Event(),
+                 pc=pc, comfy=FakeComfy(), count=1, remove=True)
+    assert r.layer == "Remove – basket" and r.masked
+
+
+def test_reference_file_with_transparency_is_flattened(tmp_path):
+    from genfill.pipeline import load_reference
+    f = tmp_path / "logo.png"
+    Image.new("RGBA", (10, 10), (0, 0, 0, 0)).save(f)
+    assert load_reference(f).getpixel((0, 0)) == (255, 255, 255)
+    with pytest.raises(UserFacingError, match="reference image"):
+        load_reference(tmp_path / "missing.png")

@@ -70,10 +70,42 @@ def _preview(img: Image.Image, box: tuple[int, int, int, int] | None) -> Image.I
     return flat
 
 
+def remove_prompt(what: str) -> str:
+    what = what.strip().rstrip(".")
+    target = f"the {what}" if what and not what.lower().startswith(("the ", "a ", "an ")) else (what or "the object")
+    return (f"Remove {target} completely. Show the empty background that was behind it, continuing the "
+            "surrounding surfaces, lighting and shadows. Add nothing new.")
+
+
+def load_reference(path: str | Path) -> Image.Image:
+    """A reference picture from disk, flattened onto white (transparent PNGs)."""
+    try:
+        im = Image.open(path)
+        im.load()
+    except (OSError, ValueError) as e:
+        raise UserFacingError(f"Can't open the reference image {Path(path).name}: {e}") from e
+    if im.mode in ("RGBA", "LA", "P"):
+        im = im.convert("RGBA")
+        flat = Image.new("RGB", im.size, (255, 255, 255))
+        flat.paste(im, mask=im.getchannel("A"))
+        return flat
+    return im.convert("RGB")
+
+
+def _reference_upload(ref: Image.Image, megapixels: float) -> Image.Image:
+    """About the working size and in multiples of 16 px, which is what Klein expects for every image."""
+    w, h = imaging.working_size(ref.width, ref.height, megapixels)
+    return ref.resize((w, h), Image.LANCZOS)
+
+
 def generate(prompt: str, settings: Settings, status: Status, progress: Progress, cancel,
-             pc=None, comfy=None, count: int | None = None) -> Results:
+             pc=None, comfy=None, count: int | None = None, reference: Image.Image | None = None,
+             remove: bool = False) -> Results:
     """With a selection: fill it. Without one: edit the whole picture as the prompt says.
-    Makes `count` (default settings.variations) candidates with different seeds."""
+    Makes `count` (default settings.variations) candidates with different seeds. `reference` is an
+    extra picture the model can take things or a style from (it calls it "image 2"). `remove`: take
+    away what's in the selection; `prompt` then names it ("the basket") or may be empty. (Blanking the
+    area first was tried and is worse: Klein invents a new object to fill the hole.)"""
     pc, comfy = _clients(settings, pc, comfy)
     prompt = prompt.strip()
     count = max(1, min(MAX_VARIATIONS, count or settings.variations))
@@ -84,6 +116,8 @@ def generate(prompt: str, settings: Settings, status: Status, progress: Progress
             if problems:
                 raise UserFacingError("This PhotoCraft version isn't compatible yet: " + " ".join(problems))
             doc = pc.document()
+            if remove and doc.selection is None:
+                raise UserFacingError("Select what to remove first.")
             if doc.selection is None and not prompt:
                 raise UserFacingError("Make a selection first to fill it, or type what to change (for example "
                                       "'make it night') to edit the whole image.")
@@ -102,6 +136,10 @@ def generate(prompt: str, settings: Settings, status: Status, progress: Progress
         else:
             src_name = comfy.upload(imaging.prepare_source(image).resize((ww, wh), Image.LANCZOS), "genfill_src.png")
             mask_name = comfy.upload(mask.resize((ww, wh), Image.BILINEAR).convert("RGB"), "genfill_mask.png")
+        refs = [comfy.upload(_reference_upload(reference, settings.megapixels), "genfill_ref.png")] if reference else []
+        label = prompt
+        if remove:
+            prompt = remove_prompt(prompt)
         images = []
         for i in range(count):
             if cancel.is_set():
@@ -113,18 +151,19 @@ def generate(prompt: str, settings: Settings, status: Status, progress: Progress
                 progress(i / count)
             seed = random.randint(0, 2**32 - 1)
             if edit:
-                wf = build_edit_workflow(src_name, prompt, seed, settings.steps, ww, wh, settings.models)
+                wf = build_edit_workflow(src_name, prompt, seed, settings.steps, ww, wh, settings.models, refs)
                 out = comfy.run(wf, progress if count == 1 else (lambda _f: None), cancel)
                 out = out.resize(image.size, Image.LANCZOS).convert("RGBA")
                 out.putalpha(image.getchannel("A"))  # transparent stays transparent
             else:
-                wf = build_fill_workflow(src_name, mask_name, prompt, seed, settings.steps, ww, wh, settings.models)
+                wf = build_fill_workflow(src_name, mask_name, prompt, seed, settings.steps, ww, wh, settings.models,
+                                         extra_refs=refs)
                 out = comfy.run(wf, progress if count == 1 else (lambda _f: None), cancel)
                 out = imaging.match_colors(image, out, mask)
                 out = imaging.merge(image, out, imaging.blend_mask(image, doc.selection))
             images.append(out)
         progress(1.0)
-        name = ("Edit" if edit else "Generative Fill") + (f" – {prompt[:40]}" if prompt else "")
+        name = ("Edit" if edit else "Remove" if remove else "Generative Fill") + (f" – {label[:40]}" if label else "")
         return Results(images, [_preview(im, doc.selection) for im in images], name, not edit,
                        (image.width, image.height), doc.selection)
     except (PhotoCraftError, ComfyError) as e:

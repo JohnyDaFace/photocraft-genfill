@@ -6,14 +6,15 @@ import queue
 import sys
 import threading
 import tkinter as tk
+import webbrowser
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
-from . import setup_env, theme
+from . import __version__, setup_env, theme, updates
 from .comfy import ComfyClient, ComfyError
 from .photocraft_client import PhotoCraftClient, PhotoCraftError
 from .picker import Picker
-from .pipeline import MAX_VARIATIONS, UserFacingError, generate, place, run_upscale
+from .pipeline import MAX_VARIATIONS, UserFacingError, generate, load_reference, place, run_upscale
 from .settings import SETTINGS_FILE, Settings
 from .settings_dialog import SettingsDialog
 
@@ -34,8 +35,10 @@ class App:
         self.factor = tk.StringVar(value=f"{self.settings.upscale_factor}×")
         self.variations = tk.StringVar(value=self._variations_label(self.settings.variations))
         self.status = tk.StringVar(value="Checking connections…")
+        self.reference: str | None = None   # path of the optional reference picture
+        self.update_info: tuple[str, str] | None = None  # (version, url) when a newer release exists
 
-        root.title(TITLE)
+        root.title(f"{TITLE} {__version__}")
         icon = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1])) / "assets" / "icon.png"
         if icon.is_file():
             self._icon = tk.PhotoImage(file=str(icon)).subsample(16)  # 1024 → 64 px
@@ -78,17 +81,34 @@ class App:
 
         # Generate: fill the selection, or edit the whole image when nothing is selected
         gen = section(0, "Generate", "fills the selection · nothing selected = edits the whole image")
-        tk.Label(gen, text="Prompt (optional when filling)", bg=p.chrome, fg=p.text_dim,
-                 font=f["small"]).grid(row=0, column=0, columnspan=2, sticky="w")
-        self.prompt = ttk.Entry(gen, textvariable=self.prompt_text, style="PC.TEntry", font=f["body"])
-        self.prompt.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(4, 10))
+        gen.columnconfigure(0, weight=1)
+        tk.Label(gen, text="Prompt (optional when filling; for Remove, what to remove)", bg=p.chrome,
+                 fg=p.text_dim, font=f["small"]).grid(row=0, column=0, columnspan=3, sticky="w")
+        self.prompt = ttk.Combobox(gen, textvariable=self.prompt_text, style="PC.TCombobox", font=f["body"],
+                                   values=self.settings.recent_prompts)
+        self.prompt.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(4, 8))
         self.prompt.bind("<Return>", lambda e: self.start("fill"))
+
+        ref = tk.Frame(gen, bg=p.chrome)
+        ref.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(0, 10))
+        tk.Label(ref, text="Reference", bg=p.chrome, fg=p.text_dim, font=f["small"]).pack(side="left")
+        self.ref_clear = theme.PillButton(ref, "×", self.clear_reference, p, f["small"], kind="quiet",
+                                          height=22, min_width=24)
+        self.ref_clear.pack(side="right")
+        theme.PillButton(ref, "Choose…", self.choose_reference, p, f["small"], height=22,
+                         min_width=64).pack(side="right", padx=(0, 4))
+        self.ref_label = tk.Label(ref, bg=p.chrome, font=f["small"], anchor="w")
+        self.ref_label.pack(side="left", padx=(8, 8), fill="x", expand=True)
+        self._show_reference()
+
         ttk.Combobox(gen, textvariable=self.variations, width=9, state="readonly", style="PC.TCombobox",
                      font=f["body"], values=[self._variations_label(n) for n in range(1, MAX_VARIATIONS + 1)]
-                     ).grid(row=2, column=0, sticky="w")
+                     ).grid(row=3, column=0, sticky="w")
+        self.rm_btn = theme.PillButton(gen, "Remove", lambda: self.start("remove"), p, f["button"], min_width=80)
+        self.rm_btn.grid(row=3, column=1, sticky="e", padx=(0, 8))
         self.gen_btn = theme.PillButton(gen, "Generate", lambda: self.start("fill"), p, f["button"], kind="primary",
                                         min_width=96)
-        self.gen_btn.grid(row=2, column=1, sticky="e")
+        self.gen_btn.grid(row=3, column=2, sticky="e")
         rule(2)
 
         # Upscale: a bigger copy as a new document
@@ -113,6 +133,10 @@ class App:
         self.cancel_btn = theme.PillButton(bottom, "Cancel", self.cancel.set, p, f["small"], kind="quiet",
                                            height=22, min_width=56)
         self.cancel_btn.pack(side="left")
+        if self.update_info:
+            version, url = self.update_info
+            theme.PillButton(bottom, f"Version {version} available", lambda: webbrowser.open(url), p, f["small"],
+                             kind="primary", height=22).pack(side="left", padx=(8, 0))
         theme.PillButton(bottom, "Settings…", self.open_settings, p, f["small"], kind="quiet",
                          height=22, min_width=56).pack(side="right")
         theme.PillButton(bottom, "Setup PhotoCraft connection", self.setup, p, f["small"], kind="quiet",
@@ -121,6 +145,7 @@ class App:
 
     def _sync_buttons(self) -> None:
         self.gen_btn.set_enabled(not self.busy)
+        self.rm_btn.set_enabled(not self.busy)
         self.up_btn.set_enabled(not self.busy)
         self.cancel_btn.set_enabled(self.busy)
 
@@ -157,6 +182,10 @@ class App:
         except ComfyError as e:
             msgs.append(str(e))
         self.events.put(("status", "\n".join(msgs)))
+        if self.settings.check_updates:
+            found = updates.newer_release()
+            if found:
+                self.events.put(("update", found))
 
     def start(self, job: str) -> None:
         if self.busy:
@@ -166,25 +195,32 @@ class App:
         if job == "upscale":
             self.settings.upscale_factor = int(self.factor.get().rstrip("×"))
         else:
-            n = int(self.variations.get().split()[0])
-            if n != self.settings.variations:
-                self.settings.variations = n
-                self.settings.save()  # remembered for next time
+            self.settings.variations = int(self.variations.get().split()[0])
+            self.settings.remember_prompt(self.prompt_text.get())
+            self.settings.save()  # results count and prompt history are remembered
+            self.prompt.configure(values=self.settings.recent_prompts)
         self.busy = True
         self.cancel.clear()
         self._sync_buttons()
         self.bar.configure(mode="indeterminate")
         self.bar.start(12)
-        fn = self._generate if job == "fill" else run_upscale
-        prompt = self.prompt_text.get() if job == "fill" else ""  # the prompt belongs to Generate
+        if job == "upscale":
+            fn = run_upscale
+        else:
+            remove, reference = job == "remove", self.reference
+
+            def fn(*a):
+                return self._generate(*a, remove=remove, reference=reference)
+        prompt = self.prompt_text.get() if job != "upscale" else ""  # the prompt belongs to Generate
         threading.Thread(target=self._work, args=(fn, prompt), daemon=True).start()
 
     @staticmethod
     def _variations_label(n: int) -> str:
         return f"{n} result" + ("s" if n > 1 else "")
 
-    def _generate(self, prompt, settings, status, progress, cancel):
-        results = generate(prompt, settings, status, progress, cancel)
+    def _generate(self, prompt, settings, status, progress, cancel, remove=False, reference=None):
+        ref = load_reference(reference) if reference and not remove else None
+        results = generate(prompt, settings, status, progress, cancel, reference=ref, remove=remove)
         if len(results.images) > 1:
             self.events.put(("pick", results))
             return None  # the picker takes it from here
@@ -216,6 +252,9 @@ class App:
                 elif kind == "progress" and value is not None:
                     self.bar.stop()
                     self.bar.configure(mode="determinate", value=value * 100)
+                elif kind == "update":
+                    self.update_info = value
+                    self.build()
                 elif kind == "pick":
                     self.choose(value)
                 elif kind == "done":
@@ -246,6 +285,28 @@ class App:
             self.status.set("Discarded. Nothing was added to PhotoCraft.")
             self.finish()
         Picker(self.root, results, self.p, self.fonts, picked, discarded)
+
+    # -- reference picture -----------------------------------------------------------------------
+    def choose_reference(self) -> None:
+        path = filedialog.askopenfilename(
+            parent=self.root, title="Reference picture",
+            filetypes=[("Pictures", "*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff"), ("All files", "*.*")])
+        if path:
+            self.reference = path
+            self._show_reference()
+
+    def clear_reference(self) -> None:
+        self.reference = None
+        self._show_reference()
+
+    def _show_reference(self) -> None:
+        if self.reference:
+            name = Path(self.reference).name
+            name = name if len(name) <= 30 else name[:27] + "…"
+            self.ref_label.configure(text=f'{name}  (call it "image 2")', fg=self.p.text)
+        else:
+            self.ref_label.configure(text="none (optional: an object or style to use)", fg=self.p.text_faint)
+        self.ref_clear.set_enabled(bool(self.reference))
 
     # -- buttons -------------------------------------------------------------------------------
     def setup(self) -> None:

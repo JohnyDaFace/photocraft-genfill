@@ -7,11 +7,14 @@ FLUX.2 [klein]:
 - **Generate** fills a selected area, like Photoshop's Generative Fill / Generative Expand. Enlarge the canvas
   (say 1080×1350 → 1080×1920), select the empty part, click Generate. The result arrives as a **new masked
   layer**; your original layers are never changed. You get several versions to choose from.
+- **Remove** takes away whatever is in the selection and fills in the background behind it.
+- **Reference picture**: give Generate a second image to take an object or a style from.
 - **Edit** (Generate with nothing selected) changes the whole image as you describe it: "make it night",
   "change the jacket to red", "turn it into a watercolour". Everything you don't mention stays the same.
 - **Upscale** (2× or 4×) redraws the whole image larger with new detail and opens it as a new document.
 
-Nothing is uploaded anywhere: the window talks only to PhotoCraft and ComfyUI on your own machine.
+Nothing is uploaded anywhere: the window talks only to PhotoCraft and ComfyUI on your own machine. The one
+exception is a small check at startup that asks GitHub for the latest version number (turn it off in Settings).
 
 Works on **Windows** and **macOS** (Linux builds are provided too). This is an independent project, not made by
 the PhotoCraft developers.
@@ -74,6 +77,16 @@ Download the file for your computer from the **Releases** page of this repositor
    press 1–4). **Discard all** adds nothing. With 1 result it goes straight in.
 4. A new layer "Generative Fill" appears with a soft mask. Paint on the mask to adjust, or Undo to remove it.
 
+The prompt box remembers your last 15 prompts: click its arrow to pick one again.
+
+**Remove**: select the object (generously, including its shadow), optionally type what it is ("basket",
+"the person on the left"), and click **Remove**. Naming it helps when the selection holds more than one thing.
+
+**Reference picture**: click **Choose…** next to *Reference* and pick an image file, then mention it as
+"image 2" in the prompt: "the logo from image 2 as a poster on the wall", "a chair like the one in image 2",
+"in the style of image 2" (with nothing selected, that restyles the whole picture). The × clears it. Remove
+ignores the reference. Like any fill, not every try picks it up, so ask for 3 results.
+
 Keep the selection as it is while choosing; if it changes, the window asks you to put it back or Generate again
 so the result can't land in the wrong place.
 
@@ -100,6 +113,10 @@ port, and:
 - **Undo PhotoCraft setup**: removes the connection settings again.
 
 The number of results per Generate is chosen in the main window and remembered.
+
+**Updates**: at startup the window asks GitHub whether a newer version exists; if so, a blue
+*Version … available* button appears at the bottom and opens the download page. Turn this off under
+Settings › Updates. The window's title shows the version you have.
 
 ## Troubleshooting
 

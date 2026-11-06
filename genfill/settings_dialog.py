@@ -6,7 +6,7 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from . import setup_env, theme
+from . import __version__, setup_env, theme
 from .comfy import MODEL_SLOTS, ComfyClient, ComfyError
 from .compat import run_checks
 from .settings import Settings, find_photocraft_cli
@@ -69,6 +69,13 @@ class SettingsDialog(tk.Toplevel):
         row += 1
         tk.Label(fr, text=f"Found: {find_photocraft_cli()}", bg=p.chrome, fg=p.text_faint, font=f["small"]).grid(
             row=row, column=1, columnspan=2, sticky="w"); row += 1
+
+        heading("Updates", row); row += 1
+        self.check_updates = tk.BooleanVar(value=settings.check_updates)
+        tk.Checkbutton(fr, text=f"Check for a new version at startup (this is {__version__})",
+                       variable=self.check_updates, bg=p.chrome, fg=p.text_dim, activebackground=p.chrome,
+                       activeforeground=p.text, selectcolor=p.field, font=f["small"], bd=0,
+                       highlightthickness=0).grid(row=row, column=0, columnspan=3, sticky="w"); row += 1
 
         self.msg = tk.StringVar()
         tk.Label(fr, textvariable=self.msg, bg=p.chrome, fg=p.text_dim, font=f["small"], justify="left",
@@ -144,6 +151,7 @@ class SettingsDialog(tk.Toplevel):
             s.upscale_denoise = max(0.05, min(0.8, float(self.vars["upscale_denoise"].get())))
             s.port = max(1, min(65535, int(self.vars["port"].get())))
             s.photocraft_cli = self.vars["photocraft_cli"].get().strip()
+            s.check_updates = bool(self.check_updates.get())
             return s
         except ValueError:
             self.msg.set("Steps and port must be whole numbers, strength a number like 0.3.")

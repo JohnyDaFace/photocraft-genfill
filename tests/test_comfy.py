@@ -120,3 +120,13 @@ def test_edit_workflow_redraws_whole_image_from_reference():
         for v in node["inputs"].values():
             if isinstance(v, list) and len(v) == 2 and isinstance(v[0], str):
                 assert v[0] in wf, f"dangling link {v}"
+
+
+def test_reference_images_are_chained_after_the_source():
+    from genfill.comfy import build_edit_workflow
+    for wf in (build_fill_workflow("i.png", "m.png", "p", 1, 4, 64, 64, MODELS, extra_refs=["r.png"]),
+               build_edit_workflow("i.png", "p", 1, 4, 64, 64, MODELS, extra_refs=["r.png"])):
+        assert wf["extra2_image"]["inputs"]["image"] == "r.png"
+        assert wf["extra2_ref"]["inputs"]["conditioning"] == ["ref", 0]  # source first = image 1
+        assert wf["guider"]["inputs"]["positive"] == ["extra2_ref", 0]
+        assert wf["neg"]["inputs"]["conditioning"] == ["extra2_ref", 0]

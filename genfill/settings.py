@@ -24,6 +24,8 @@ CONFIG_DIR = _config_dir()
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
 _OLD_SETTINGS_FILE = Path(__file__).resolve().parents[1] / "settings.json"  # before 2026-11-06
 
+MAX_RECENT = 15  # prompts remembered
+
 DEFAULT_MODELS = {
     "unet": "flux-2-klein-9b-fp8.safetensors",
     "clip": "qwen_3_8b_fp8mixed.safetensors",
@@ -60,6 +62,8 @@ class Settings:
     photocraft_cli: str = ""  # empty = find it automatically
     steps: int = 4
     variations: int = 3  # candidates per Generate (1 = place straight away, no choosing)
+    recent_prompts: list = field(default_factory=list)  # newest first, shown in the prompt box
+    check_updates: bool = True  # ask GitHub once at startup whether a newer version exists
     megapixels: float = 1.0
     upscale_factor: int = 2
     upscale_denoise: float = 0.3
@@ -86,7 +90,13 @@ class Settings:
         except TypeError:
             return cls()
         s.models = {**DEFAULT_MODELS, **(s.models if isinstance(s.models, dict) else {})}
+        s.recent_prompts = [str(x) for x in s.recent_prompts][:MAX_RECENT] if isinstance(s.recent_prompts, list) else []
         return s
+
+    def remember_prompt(self, prompt: str) -> None:
+        prompt = prompt.strip()
+        if prompt:
+            self.recent_prompts = [prompt] + [x for x in self.recent_prompts if x != prompt][:MAX_RECENT - 1]
 
     def save(self, path: Path = SETTINGS_FILE) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
