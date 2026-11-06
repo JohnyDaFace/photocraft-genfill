@@ -102,6 +102,10 @@ def engine_checks(cli: str, check: _Checker, out: Report) -> None:
             check("edit layer is unmasked, nothing selected", lambda: _expect(
                 pc.execute("document.inspect"),
                 lambda d: d["layers"][0]["name"] == "Edit" and not d["layers"][0]["hasMask"] and not d["hasSelection"]))
+            check("grow canvas, transparent edges (Expand)", lambda: _expect(
+                (pc.execute("image.canvasSize", {"width": 1200, "height": 2000, "anchor": "center",
+                                                 "extensionColor": "transparent"}), pc.render())[1],
+                lambda im: im.size == (1200, 2000) and im.getpixel((2, 2))[3] == 0))
             check("open result as new document (Upscale)", lambda: pc.open_document("result.png"))
     except PhotoCraftError as e:
         check("start background engine", lambda: (_ for _ in ()).throw(e))
@@ -142,6 +146,10 @@ def app_checks(s: Settings, check: _Checker, out: Report) -> None:
         check("edit layer is unmasked, nothing selected", lambda: _expect(
             pc.execute("document.inspect"),
             lambda d: d["layers"][0]["name"] == "Edit" and not d["layers"][0]["hasMask"] and not d["hasSelection"]))
+        check("grow canvas, transparent edges (Expand)", lambda: _expect(
+            (pc.execute("image.canvasSize", {"width": 500, "height": 700, "anchor": "center",
+                                             "extensionColor": "transparent"}), pc.render())[1],
+            lambda im: im.size == (500, 700) and im.getpixel((2, 2))[3] == 0))
         try:
             if pc.execute("document.inspect").get("name") == "genfill-compat-test.png":
                 pc.execute("file.close", {"save": "discard"})

@@ -63,6 +63,7 @@ class Settings:
     steps: int = 4
     variations: int = 3  # candidates per Generate (1 = place straight away, no choosing)
     recent_prompts: list = field(default_factory=list)  # newest first, shown in the prompt box
+    expand_choice: str = "16:9"  # last shape picked in Expand
     check_updates: bool = True  # ask GitHub once at startup whether a newer version exists
     megapixels: float = 1.0
     upscale_factor: int = 2
@@ -70,6 +71,8 @@ class Settings:
     upscale_steps: int = 8
     max_upscaled_side: int = 8192
     last_theme: str = "ProMedium"  # PhotoCraft's theme last time we saw it (window opens in it)
+    bar_x: int | None = None  # where the bar was dragged to (None = top centre of the screen)
+    bar_y: int | None = None
     models: dict = field(default_factory=lambda: dict(DEFAULT_MODELS))
 
     @property

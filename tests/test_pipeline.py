@@ -188,3 +188,90 @@ def test_reference_file_with_transparency_is_flattened(tmp_path):
     assert load_reference(f).getpixel((0, 0)) == (255, 255, 255)
     with pytest.raises(UserFacingError, match="reference image"):
         load_reference(tmp_path / "missing.png")
+
+
+class ExpandPC(FakePC):
+    """Also does Canvas Size (centre anchor, rounding the offset up like PhotoCraft)."""
+    def __init__(self, doc, selection, round_up=True):
+        super().__init__(doc, selection)
+        self.round_up, self.commands = round_up, []
+
+    def execute(self, cmd, params=None):
+        self.commands.append((cmd, params))
+        if cmd == "image.canvasSize":
+            W, H = params["width"], params["height"]
+            r = 1 if self.round_up else 0
+            big = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            big.paste(self.doc, ((W - self.doc.width + r) // 2, (H - self.doc.height + r) // 2))
+            self.doc = big
+
+    def _cmd(self, step): return {"canvas size": "image.canvasSize"}[step]
+
+
+def _photo(w=455, h=800):
+    return Image.new("RGBA", (w, h), (200, 150, 100, 255))
+
+
+def test_expanded_size_only_grows():
+    from genfill.pipeline import expanded_size
+    assert expanded_size(455, 800, "16:9") == (1422, 800)
+    assert expanded_size(1600, 900, "9:16") == (1600, 2844)
+    assert expanded_size(1000, 500, "+10% each side") == (1200, 600)
+    assert expanded_size(1000, 1000, "1:1") == (1000, 1000)
+
+
+def test_expand_fills_new_area_and_places_after_canvas_grows(tmp_path):
+    from genfill.pipeline import expand
+    pc, comfy = ExpandPC(_photo(), None), FakeComfy()
+    r = expand("16:9", "", _settings(tmp_path), lambda s: None, lambda f: None, threading.Event(),
+               pc=pc, comfy=comfy, count=2)
+    assert r.expand_to == (1422, 800) and r.offset == (484, 0) and comfy.kinds == ["fill", "fill"]
+    assert pc.commands == []                      # the document is untouched until a result is placed
+    place(r, 0, _settings(tmp_path), pc=pc)
+    assert pc.commands[0][0] == "image.canvasSize" and pc.commands[0][1]["extensionColor"] == "transparent"
+    rel, name, masked = pc.placed[0]
+    assert name == "Generative Expand – 16:9" and not masked
+    out = np.asarray(Image.open(tmp_path / rel))
+    assert out.shape[:2] == (800, 1422) and out[..., 3].min() == 255   # no gaps
+    assert tuple(out[400, 700][:3]) == (200, 150, 100)                  # the photo itself is unchanged
+
+
+def test_expand_follows_photocraft_if_it_centres_differently(tmp_path):
+    from genfill.pipeline import expand
+    photo = _photo()
+    photo.paste((0, 0, 255, 255), (200, 0, 201, 800))   # a marker line 200 px into the photo
+    pc = ExpandPC(photo, None, round_up=False)            # PhotoCraft puts it at x=483, not 484
+    r = expand("16:9", "", _settings(tmp_path), lambda s: None, lambda f: None, threading.Event(),
+               pc=pc, comfy=FakeComfy(), count=1)
+    place(r, 0, _settings(tmp_path), pc=pc)
+    out = np.asarray(Image.open(tmp_path / pc.placed[0][0]))
+    assert out[..., 3].min() == 255
+    assert tuple(out[400, 683][:3]) == (0, 0, 255)       # the layer lines up with the photo in the document
+
+
+def test_expand_refuses_same_shape(tmp_path):
+    from genfill.pipeline import expand
+    with pytest.raises(UserFacingError, match="already"):
+        expand("1:1", "", _settings(tmp_path), lambda s: None, lambda f: None, threading.Event(),
+               pc=ExpandPC(_photo(500, 500), None), comfy=FakeComfy())
+
+
+def test_more_like_this_starts_from_the_chosen_result(tmp_path):
+    from genfill.pipeline import SIMILAR_DENOISE, similar
+    pc, comfy = FakePC(_doc(), (0, 0, 1080, 285)), FakeComfy()
+    r = _gen(pc, comfy, tmp_path, "sky", count=3)
+    seen = []
+    run = comfy.run
+    comfy.run = lambda wf, p, c: (seen.append(wf), run(wf, p, c))[1]
+    more = similar(r, 2, _settings(tmp_path), lambda s: None, lambda f: None, threading.Event(), comfy=comfy, count=2)
+    assert len(more.images) == 3 and more.images[0] is r.images[2]   # the chosen one stays as choice 1
+    assert all(wf["split"]["inputs"]["denoise"] == SIMILAR_DENOISE for wf in seen)
+    assert more.layer == r.layer and more.selection == r.selection
+
+
+def test_presets_fill_real_prompts():
+    from genfill import presets
+    names = [n for n, _ in presets.PRESETS]
+    assert len(names) == len(set(names)) and presets.PLACEHOLDER not in names
+    assert "Colorize" in presets.prompt_for("Colorize black & white")
+    assert presets.prompt_for(presets.PLACEHOLDER) is None

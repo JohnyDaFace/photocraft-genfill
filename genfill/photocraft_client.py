@@ -29,6 +29,7 @@ _COMMON = {
     "feather selection": ["select.modify.feather"],
     "select all": ["select.all"],
     "deselect": ["select.deselect"],
+    "canvas size": ["image.canvasSize"],
 }
 REQUIRED_COMMANDS = {
     "headless": {**_COMMON, "rasterize placed layer": ["layer.rasterize.smartObject", "layer.smartObjects.rasterize"]},

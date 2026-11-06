@@ -73,9 +73,18 @@ def _add_references(wf: dict, conditioning: list, images: list[str]) -> list:
     return conditioning
 
 
+def _sigmas(wf: dict, denoise: float) -> list:
+    """Full schedule, or only its low-noise end for a partial redraw (`denoise` < 1: keeps the
+    composition of the input and varies the details: Generate Similar, Harmonize)."""
+    if denoise >= 1.0:
+        return ["sigmas", 0]
+    wf["split"] = {"class_type": "SplitSigmasDenoise", "inputs": {"sigmas": ["sigmas", 0], "denoise": denoise}}
+    return ["split", 1]
+
+
 def build_fill_workflow(image_name: str, mask_name: str, prompt: str, seed: int, steps: int,
                         width: int, height: int, models: dict, ref_name: str | None = None,
-                        extra_refs: list[str] = ()) -> dict:
+                        extra_refs: list[str] = (), denoise: float = 1.0) -> dict:
     """Generate only inside the mask. The reference shown to Klein is `ref_name` (the real picture
     only) when given: Klein is an edit model and copies its reference, so a reference that contains
     the blurry pre-fill gets the blur copied into the result."""
@@ -93,13 +102,14 @@ def build_fill_workflow(image_name: str, mask_name: str, prompt: str, seed: int,
     if ref_name:
         wf["ref_image"] = {"class_type": "LoadImage", "inputs": {"image": ref_name}}
         wf["ref_encode"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["ref_image", 0], "vae": ["vae", 0]}}
-    wf.update(_sampling(["masked", 0], _add_references(wf, ["ref", 0], list(extra_refs)), seed, ["sigmas", 0],
-                        "genfill"))
+    wf.update(_sampling(["masked", 0], _add_references(wf, ["ref", 0], list(extra_refs)), seed,
+                        _sigmas(wf, denoise), "genfill"))
     return wf
 
 
 def build_edit_workflow(image_name: str, prompt: str, seed: int, steps: int,
-                        width: int, height: int, models: dict, extra_refs: list[str] = ()) -> dict:
+                        width: int, height: int, models: dict, extra_refs: list[str] = (),
+                        denoise: float = 1.0) -> dict:
     """Instruction edit of the whole picture ("make it night", "change the jacket to red"): Klein
     redraws the image from full noise while following its reference, so what the prompt doesn't
     mention stays the same."""
@@ -111,8 +121,8 @@ def build_edit_workflow(image_name: str, prompt: str, seed: int, steps: int,
         "ref": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["text", 0], "latent": ["encode", 0]}},
         "sigmas": {"class_type": "Flux2Scheduler", "inputs": {"steps": steps, "width": width, "height": height}},
     })
-    wf.update(_sampling(["encode", 0], _add_references(wf, ["ref", 0], list(extra_refs)), seed, ["sigmas", 0],
-                        "genfill_edit"))
+    wf.update(_sampling(["encode", 0], _add_references(wf, ["ref", 0], list(extra_refs)), seed,
+                        _sigmas(wf, denoise), "genfill_edit"))
     return wf
 
 
