@@ -26,6 +26,16 @@ class ShootComfy(FakeComfy):
 
     def check_segment(self, model=None): return []
 
+    def run_all(self, wf, on_progress, cancel):  # SAM 3 with one mask per thing found: `box`, then `others`
+        assert wf["detect"]["inputs"]["individual_masks"] is True
+        w, h = self.uploads[-1]
+        masks = []
+        for x0, y0, x1, y1 in ([self.box] if self.box else []) + list(getattr(self, "others", [])):
+            m = Image.new("RGB", (w, h), (0, 0, 0))
+            m.paste((255, 255, 255), (int(x0 * w), int(y0 * h), int(x1 * w), int(y1 * h)))
+            masks.append(m)
+        return masks or [Image.new("RGB", (w, h), (0, 0, 0))]
+
     def run(self, wf, on_progress, cancel):
         if "detect" in wf:
             w, h = self.uploads[-1]
@@ -119,6 +129,18 @@ def test_no_product_found_uses_the_whole_photo_and_says_so(tmp_path):
     comfy = ShootComfy(); comfy.box = None
     _shoot(tmp_path, comfy, ShootPC(_doc(), None, tmp_path), status=said.append)
     assert any("using the whole photo" in s for s in said)
+
+
+def test_the_big_central_thing_is_the_subject_not_a_small_one_at_the_edge(tmp_path):
+    from genfill import shoots as _shoots
+    from genfill.photoshoot import prepare_subject
+    photo = Image.new("RGB", (1000, 1000), (0, 0, 255))              # blue clutter
+    photo.paste((255, 0, 0), (300, 300, 700, 800))                    # the red jar in the middle
+    comfy = ShootComfy()
+    comfy.box, comfy.others = (0.85, 0.0, 0.98, 0.2), [(0.3, 0.3, 0.7, 0.8)]   # SAM's "best" match is the edge one
+    cut = prepare_subject(photo, _shoots.by_name("Luxury dark"), _settings(tmp_path), lambda s: None,
+                          threading.Event(), comfy)
+    assert cut.getpixel((512, 512)) == (255, 0, 0)
 
 
 def test_a_failing_shot_is_retried_once_then_skipped(tmp_path):

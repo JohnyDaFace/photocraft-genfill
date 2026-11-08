@@ -325,6 +325,25 @@ def _segment(rgb: Image.Image, what: str, settings: Settings, progress: Progress
     return imaging.fill_small_holes(out.getchannel("R").resize(rgb.size, Image.BILINEAR))
 
 
+def _segment_each(rgb: Image.Image, what: str, settings: Settings, cancel, comfy) -> list[Image.Image]:
+    """SAM 3's masks (picture-sized L), one per thing matching `what` that it found (maybe none)."""
+    comfy.check()
+    problems = comfy.check_segment()
+    if problems:
+        raise UserFacingError(problems[0])
+    ww, wh = imaging.working_size(rgb.width, rgb.height, settings.megapixels)
+    name = comfy.upload(rgb.resize((ww, wh), Image.LANCZOS), "genfill_seg.png")
+    try:
+        outs = comfy.run_all(build_segment_workflow(name, segment_query(what), individual=True),
+                             lambda _f: None, cancel)
+    except ComfyError as e:
+        if "out of bounds" in str(e):  # SAM 3 found nothing: its empty batch of masks fails MaskToImage
+            return []
+        raise
+    masks = [imaging.fill_small_holes(o.getchannel("R").resize(rgb.size, Image.BILINEAR)) for o in outs]
+    return [m for m in masks if m.getbbox()]
+
+
 def _reference_face(reference: Image.Image, settings: Settings, progress: Progress, cancel, comfy) -> Image.Image:
     """The biggest face in the reference picture with some surroundings (what the model copies from)."""
     rgb = reference.convert("RGB")

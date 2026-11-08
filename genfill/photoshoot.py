@@ -7,6 +7,7 @@ set and the light. Each shot is kept in memory until the whole run is placed, on
 folder keeps only the newest 10 pictures)."""
 from __future__ import annotations
 
+import math
 import random
 import time
 from pathlib import Path
@@ -17,7 +18,7 @@ from . import imaging, shoot_store, shoots
 from .comfy import ComfyError, build_create_workflow
 from .photocraft_client import PhotoCraftError
 from .pipeline import (MAX_VARIATIONS, Placed, Progress, Results, Status, UserFacingError, _clients, _exchange,
-                       _fill_holes, _preview, _reference_head, _segment, create_size, load_reference)
+                       _fill_holes, _preview, _reference_head, _segment_each, create_size, load_reference)
 from .settings import Settings
 
 SHOT_COUNTS = (4, 8, 12)
@@ -34,6 +35,16 @@ def _square(img: Image.Image) -> Image.Image:
     return square.resize((SUBJECT_SIDE, SUBJECT_SIDE), Image.LANCZOS)
 
 
+def _main_score(mask: Image.Image) -> float:
+    """How likely a found thing is the photo's subject: big and near the middle. In a phone photo of a jar on a
+    cluttered shelf, the jar wins over the bottles behind it (SAM 3's own best match may be one of those)."""
+    x0, y0, x1, y1 = mask.getbbox()
+    w, h = mask.size
+    area = (x1 - x0) * (y1 - y0) / (w * h)
+    off = math.hypot((x0 + x1) / 2 - w / 2, (y0 + y1) / 2 - h / 2) / math.hypot(w / 2, h / 2)
+    return area * (1 - off) ** 2
+
+
 def prepare_subject(photo: Image.Image, shoot: shoots.Shoot, settings: Settings, status: Status, cancel,
                     comfy) -> Image.Image:
     """The subject of the photo as a 1024×1024 RGB cut-out on grey. A product is found with SAM 3 (nothing
@@ -44,12 +55,12 @@ def prepare_subject(photo: Image.Image, shoot: shoots.Shoot, settings: Settings,
         rgb = rgb.resize((round(rgb.width * k), round(rgb.height * k)), Image.LANCZOS)
     if shoot.kind == "people":
         return _reference_head(rgb, settings, cancel, comfy).resize((SUBJECT_SIDE, SUBJECT_SIDE), Image.LANCZOS)
-    mask = _segment(rgb, f"{shoot.subject or 'product'}:1", settings, lambda _f: None, cancel, comfy)
-    mask = _fill_holes(mask).filter(ImageFilter.MaxFilter(5))
-    box = mask.getbbox()
-    if not box:
+    masks = _segment_each(rgb, shoot.subject or "product", settings, cancel, comfy)
+    if not masks:
         status(NOT_FOUND)
         return _square(rgb)
+    mask = _fill_holes(max(masks, key=_main_score)).filter(ImageFilter.MaxFilter(5))
+    box = mask.getbbox()
     cut = Image.composite(rgb, Image.new("RGB", rgb.size, GREY), mask.filter(ImageFilter.GaussianBlur(1)))
     x0, y0, x1, y1 = box
     pad = max(x1 - x0, y1 - y0) // 8

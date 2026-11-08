@@ -247,16 +247,17 @@ SEGMENT_MODEL_URL = ("https://huggingface.co/Comfy-Org/sam3.1/resolve/main/check
 
 
 def build_segment_workflow(image_name: str, what: str, model: str = SEGMENT_MODEL,
-                           threshold: float = 0.5) -> dict:
+                           threshold: float = 0.5, individual: bool = False) -> dict:
     """SAM 3: a mask of everything in the picture that matches `what` ("sky", "person", "the red car").
-    Same graph as ComfyUI's own Image Segmentation (SAM3) template; the mask comes back as a picture."""
+    Same graph as ComfyUI's own Image Segmentation (SAM3) template; the mask comes back as a picture
+    (`individual`: one picture per thing found, for ComfyClient.run_all)."""
     return {
         "seg_model": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": model}},
         "image": {"class_type": "LoadImage", "inputs": {"image": image_name}},
         "seg_text": {"class_type": "CLIPTextEncode", "inputs": {"text": what, "clip": ["seg_model", 1]}},
         "detect": {"class_type": "SAM3_Detect",
                    "inputs": {"model": ["seg_model", 0], "image": ["image", 0], "conditioning": ["seg_text", 0],
-                              "threshold": threshold, "refine_iterations": 2, "individual_masks": False}},
+                              "threshold": threshold, "refine_iterations": 2, "individual_masks": individual}},
         "mask_image": {"class_type": "MaskToImage", "inputs": {"mask": ["detect", 0]}},
         "out": {"class_type": "PreviewImage", "inputs": {"images": ["mask_image", 0]}},
     }
@@ -374,6 +375,14 @@ class ComfyClient:
 
     def run(self, workflow: dict, on_progress: Callable[[float | None], None], cancel) -> Image.Image:
         """Queue the workflow, wait for it, and return its first output image."""
+        return self._fetch(self._outputs(workflow, on_progress, cancel)[0])
+
+    def run_all(self, workflow: dict, on_progress: Callable[[float | None], None], cancel) -> list[Image.Image]:
+        """Like `run`, but every output image (e.g. one mask per thing SAM 3 found)."""
+        return [self._fetch(im) for im in self._outputs(workflow, on_progress, cancel)]
+
+    def _outputs(self, workflow: dict, on_progress: Callable[[float | None], None], cancel) -> list[dict]:
+        """Queue the workflow, wait for it, and return its output images' descriptions (at least one)."""
         res = self._json("/prompt", {"prompt": workflow, "client_id": self.client_id})
         if "prompt_id" not in res or res.get("node_errors"):
             details = [err.get("details") or err.get("message", "")
@@ -392,9 +401,9 @@ class ComfyClient:
                 status = entry.get("status", {})
                 if status.get("status_str") == "error":
                     raise ComfyError("ComfyUI failed: " + _error_text(status))
-                for out in entry.get("outputs", {}).values():
-                    for im in out.get("images", []):
-                        return self._fetch(im)
+                images = [im for out in entry.get("outputs", {}).values() for im in out.get("images", [])]
+                if images:
+                    return images
                 if status.get("completed"):
                     raise ComfyError("ComfyUI finished without an image.")
             if time.monotonic() - start > TIMEOUT_SECONDS:
