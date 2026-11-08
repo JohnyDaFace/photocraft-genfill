@@ -78,6 +78,7 @@ class Results:
     new_document: bool = False                # Create: the chosen one opens as a new document
     placed: "Placed | None" = None            # the one in PhotoCraft now (so another one can take its place)
     saved: str | None = None                  # the id it is kept under on disk (lasting results)
+    tag: str | None = None                    # a layer tag of its own (a photoshoot shot): written as is, no set kept
 
 
 @dataclass
@@ -784,6 +785,10 @@ def _keep(results: Results, settings: Settings, pc) -> None:
     """Lasting results: keep the set on disk and tag the layer with it (best effort: a failure here never
     undoes the placing)."""
     p = results.placed
+    if results.tag is not None:
+        if p is not None and p.layer is not None:
+            _quiet(lambda: pc.set_layer_metadata(p.layer, results.tag))
+        return
     if len(results.images) < 2 or results.new_document or p is None or p.layer is None:
         return
     root = Path(settings.results_dir)

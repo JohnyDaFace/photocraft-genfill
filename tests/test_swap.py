@@ -165,3 +165,13 @@ def test_closing_before_any_pick_discards(root, tmp_path):
                on_close=lambda: events.append("close"))
     w.close()
     assert events == ["discard"]
+
+
+def test_a_tagged_result_keeps_its_own_tag_and_saves_no_set(tmp_path):
+    pc, r = _results(tmp_path, selection=None, count=2)
+    r.tag = '<x:xmpmeta genfill:shoot="0123456789abcdef" genfill:shot="3"/>'
+    place(r, 0, _settings(tmp_path), pc=pc)
+    assert pc.xmp[r.placed.layer] == r.tag
+    swap(r, 1, _settings(tmp_path), pc=pc)
+    assert pc.xmp[r.placed.layer] == r.tag and r.saved is None
+    assert not (tmp_path / "results").exists()

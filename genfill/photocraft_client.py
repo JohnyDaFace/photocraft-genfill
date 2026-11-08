@@ -201,6 +201,14 @@ class PhotoCraftClient:
         except PhotoCraftError:
             pass  # a name is nice to have; the fill itself is done
 
+    def rename_layer(self, name: str, layer: int | None = None) -> None:
+        """Rename a layer (the active one by default). Best effort, like the rename in `place_layer`."""
+        args = {"name": name} if layer is None else {"name": name, "layer": layer}
+        try:
+            self.execute(self._cmd("rename layer"), args)
+        except PhotoCraftError:
+            pass
+
     def _put(self, rel_path: str) -> None:
         """A document-sized PNG as a new pixel layer above the active one."""
         if self.mode == "headless":
