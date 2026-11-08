@@ -190,7 +190,12 @@ def reshoot(settings: Settings, status: Status, progress: Progress, cancel, pc=N
             progress(i / count)
             if cancel.is_set():
                 break
-            images.append(_make(comfy, settings, prompt, refs, run.size, cancel))
+            try:
+                images.append(_make(comfy, settings, prompt, refs, run.size, cancel))
+            except ComfyError as e:  # keep the versions already made; only an empty result is an error
+                if images:
+                    break
+                raise UserFacingError("Cancelled." if cancel.is_set() else str(e)) from e
     except ComfyError as e:
         raise UserFacingError(str(e)) from e
     if not images:

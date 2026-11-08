@@ -221,3 +221,41 @@ def test_reshoot_refuses_untagged_layers_gone_runs_and_resized_documents(tmp_pat
     pc, comfy, s = _shot_then(tmp_path); runs = comfy.runs; pc.doc = Image.new("RGBA", (100, 100))
     with pytest.raises(UserFacingError, match="size changed"): reshoot(s, print, print, threading.Event(), pc=pc, comfy=comfy)
     assert comfy.runs == runs
+
+
+def test_reshoot_cancelled_during_a_version_keeps_the_finished_ones(tmp_path):
+    pc, comfy, s = _shot_then(tmp_path, variations=3)
+    cancel, base = threading.Event(), comfy.creates
+    comfy.fail_runs = {base + 2}
+    real = comfy.run
+
+    def run(wf, on_progress, c):
+        if comfy.creates + 1 == base + 2:
+            cancel.set()
+        return real(wf, on_progress, c)
+
+    comfy.run = run
+    r = reshoot(s, print, print, cancel, pc=pc, comfy=comfy)
+    assert len(r.images) == 1
+
+
+def test_reshoot_with_nothing_finished_raises(tmp_path):
+    pc, comfy, s = _shot_then(tmp_path)
+    comfy.fail_runs = {comfy.creates + 1}
+    with pytest.raises(UserFacingError, match="boom"):
+        reshoot(s, print, print, threading.Event(), pc=pc, comfy=comfy)
+
+
+def test_reshoot_of_a_shot_number_the_run_lacks_is_a_gone_run(tmp_path):
+    pc, comfy, s = _shot_then(tmp_path)
+    run_id = shoot_store.tag_of(pc.xmp[pc.active])[0]
+    pc.xmp[pc.active] = shoot_store.tag_packet(run_id, 99)
+    with pytest.raises(UserFacingError, match="no longer kept"):
+        reshoot(s, print, print, threading.Event(), pc=pc, comfy=comfy)
+
+
+def test_reshoot_places_nothing_before_a_pick(tmp_path):
+    pc, comfy, s = _shot_then(tmp_path)
+    placed, layers = list(pc.placed), list(pc.layers)
+    reshoot(s, print, print, threading.Event(), pc=pc, comfy=comfy)
+    assert pc.placed == placed and pc.layers == layers and not hasattr(pc, "replaced")
