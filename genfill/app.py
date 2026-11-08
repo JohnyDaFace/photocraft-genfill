@@ -32,6 +32,7 @@ from .widgets import (BarButton, PopupMenu, Tooltip, minimize, round_corners, sc
                       show_in_taskbar)
 
 TITLE = "Generative Fill for PhotoCraft"
+KOFI_URL = "https://ko-fi.com/T7L52ABIMT"
 BORDERLESS = sys.platform == "win32"  # elsewhere a borderless window can't reliably take keyboard focus
 OK, BAD, UNKNOWN = "#2d9d78", "#e68619", None  # connection dot colours (Spectrum green / orange)
 PLACEHOLDER = {"selection": "Describe what to fill in, or leave empty…",
@@ -587,6 +588,7 @@ class App:
             version, url = self.update_info
             items.append(("item", f"Version {version} is out: download", lambda: webbrowser.open(url), "spark"))
         items.append(("info", f"Version {__version__}"))
+        items.append(("item", "Buy me a coffee (Ko-fi)", lambda: webbrowser.open(KOFI_URL), "coffee"))
         items.append(("sep",))
         if BORDERLESS:
             items.append(("item", "Minimize", lambda: minimize(self.root), "chev"))
