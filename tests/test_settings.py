@@ -41,3 +41,12 @@ def test_bad_history_in_file_is_ignored(tmp_path):
     f.write_text('{"recent_prompts": "oops", "check_updates": false}')
     s = Settings.load(f)
     assert s.recent_prompts == [] and s.check_updates is False
+
+
+def test_shoot_count_defaults_to_eight_and_is_kept(tmp_path):
+    f = tmp_path / "s.json"
+    s = Settings()
+    assert s.shoot_count == 8
+    s.shoot_count = 12
+    s.save(f)
+    assert Settings.load(f).shoot_count == 12

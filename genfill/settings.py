@@ -60,6 +60,8 @@ class Settings:
     exchange_dir: str = str(APP_DIR / "exchange")
     results_dir: str = str(APP_DIR / "results")  # lasting results: sets of results to swap between later
     keep_results: int = 50                        # that many sets are kept; older ones are deleted
+    shoots_dir: str = str(APP_DIR / "shoots")     # lasting photoshoots: runs to reshoot from later
+    shoot_count: int = 8                          # shots per photoshoot (4, 8 or 12)
     comfy_url: str = "http://127.0.0.1:8188"
     photocraft_cli: str = ""  # empty = find it automatically
     steps: int = 4
