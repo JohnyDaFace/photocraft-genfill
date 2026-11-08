@@ -272,6 +272,33 @@ def blend_mask(rgba: Image.Image, selection: Bounds) -> Image.Image:
     return m.filter(ImageFilter.GaussianBlur(BLEND_FEATHER / 3))
 
 
+def keep_colors(original: Image.Image, edited: Image.Image) -> Image.Image:
+    """An edit of the whole picture with the original's colours: a gain and offset per channel, fitted on the
+    pixels the edit barely changed (the worst-fitting half is left out, three times), applied everywhere.
+    The edit's own changes stay; only its overall tint and brightness drift is undone. Keeps `edited`'s alpha."""
+    o = np.asarray(original.convert("RGB").resize(edited.size), np.float32).reshape(-1, 3)
+    g = np.asarray(edited.convert("RGB"), np.float32).reshape(-1, 3)
+    keep = np.ones(len(o), bool)
+    fit = g
+    for _ in range(3):
+        if keep.sum() < 64:
+            break
+        cols = []
+        for c in range(3):
+            if np.ptp(g[keep, c]) < 1:
+                cols.append(g[:, c])
+                continue
+            a, b = np.polyfit(g[keep, c], o[keep, c], 1)
+            cols.append(g[:, c] * float(np.clip(a, 0.5, 2.0)) + b)
+        fit = np.stack(cols, 1)
+        err = np.abs(fit - o).sum(1)
+        keep = err <= np.percentile(err, 50)
+    rgb = Image.fromarray(np.clip(fit.reshape(edited.height, edited.width, 3) + 0.5, 0, 255).astype(np.uint8), "RGB")
+    if edited.mode == "RGBA":
+        rgb.putalpha(edited.getchannel("A"))
+    return rgb
+
+
 def match_colors(original: Image.Image, generated: Image.Image, mask: Image.Image) -> Image.Image:
     """Remove the model's colour/brightness drift: measure (original - generated) on original pixels
     near the fill, spread that difference smoothly over the whole image and add it to the generated

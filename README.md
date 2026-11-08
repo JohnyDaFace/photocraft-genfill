@@ -12,7 +12,7 @@ FLUX.2 [klein]:
 - **Expand** makes the canvas bigger (16:9, 4:5, 1:1… or a margin all round) and fills the new edges to
   match, like Photoshop's Generative Expand.
 - **Presets** (like Photoshop's Neural Filters): Harmonize, Colorize, Restore old photo, Sky replacement,
-  Remove window reflections, Remove glare from glasses, Background blur, Relight, and portrait tweaks, one click each.
+  Remove reflections (windows, glasses), Background blur, Relight, and portrait tweaks, one click each.
 - **More like this** (Generate Similar): new versions close to a result you almost like.
 - **Remove** takes away whatever is in the selection and fills in the background behind it.
 - **Select ▾** (with SAM 3) finds things by name: type "dog" or "boat" and it selects them, or pick Sky or
@@ -273,8 +273,7 @@ only there.
 | Harmonize | Select an object you pasted in: its light, colour and shadows are matched to the photo |
 | Colorize black & white, Restore old photo | Old family photos |
 | Sky: golden sunset / clear blue / dramatic storm | Replaces the sky and adjusts the light to match |
-| Remove window reflections | Shop windows, glass doors, display cases: the mirrored street and sky go, what's behind the glass shows clearly |
-| Remove glare from glasses | Eyes hidden behind shiny lenses; the frames and the face stay the same |
+| Remove reflections: windows / glasses | Shop windows, glass doors, display cases; eyes hidden behind shiny lenses. The colours stay the original's. Busy reflections (people, shop fronts) may only fade: select just the glass so nothing else changes, and make a few results to pick from |
 | Background blur | A portrait-lens look; the subject stays sharp |
 | Relight: golden hour / soft studio / night | Changes the lighting of the whole scene |
 | Portrait: smile, look at the camera, retouch skin, younger, older | One person in the photo; select the face for the most control |

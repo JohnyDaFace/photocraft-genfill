@@ -11,7 +11,7 @@ from typing import Callable
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
-from . import imaging, results_store, styles
+from . import imaging, presets, results_store, styles
 from .comfy import (ComfyClient, ComfyError, build_create_workflow, build_edit_workflow, build_fill_workflow,
                     build_refine_workflow, build_seedvr_workflow, build_segment_workflow, UPSCALE_MODEL)
 from .photocraft_client import PhotoCraftClient, PhotoCraftError
@@ -248,6 +248,8 @@ def generate(prompt: str, settings: Settings, status: Status, progress: Progress
             told = label
         job = Job(image, mask, doc.selection, told, None if remove else reference)
         images = _candidates(job, settings, status, progress, cancel, comfy, count)
+        if edit and name in presets.KEEP_COLOURS:
+            images = [imaging.keep_colors(image, im) for im in images]
         shown = name or label or (" · ".join(x for x in (settings.style, settings.angle) if x) if styled else "")
         name = ("Edit" if edit else "Remove" if remove else "Generative Fill") + (f" – {shown[:40]}" if shown else "")
         return Results(images, [_preview(im, doc.selection) for im in images], name, not edit,

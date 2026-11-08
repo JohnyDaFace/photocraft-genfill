@@ -99,3 +99,16 @@ def test_blend_mask_transition_stays_inside_layer_mask():
     assert m[100, 540] == 255                    # deep in the empty band: all generated
     assert m[285 + LAYER_MASK_EXPAND, 540] == 0  # at the layer mask's reach: all original
     assert BLEND_GROW + BLEND_FEATHER <= LAYER_MASK_EXPAND
+
+
+def test_keep_colors_undoes_a_tint_but_keeps_what_the_edit_changed():
+    from genfill.imaging import keep_colors
+    rng = np.random.default_rng(1)
+    orig = rng.integers(20, 230, (120, 160, 3)).astype(np.float32)
+    edited = orig * np.array([1.1, 0.9, 0.8]) + np.array([12, -5, -10])    # warmer, darker drift…
+    edited[:40, :40] = (250, 250, 250)                                     # …and one real change
+    out = np.asarray(keep_colors(Image.fromarray(orig.astype(np.uint8)),
+                                 Image.fromarray(np.clip(edited, 0, 255).astype(np.uint8)).convert("RGBA")))
+    assert out.shape[2] == 4
+    assert np.abs(out[60:, 60:, :3].astype(float) - orig[60:, 60:]).mean() < 2.5   # tint gone
+    assert out[:40, :40, :3].mean() > 200                                          # the change stays
