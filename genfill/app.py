@@ -18,9 +18,11 @@ from tkinter import filedialog, messagebox
 
 from PIL import ImageTk
 
-from . import __version__, autostart, presets, results_store, setup_env, style_thumbs, styles, theme, updates
+from . import (__version__, autostart, presets, results_store, setup_env, shoot_store, shoots, style_thumbs, styles,
+               theme, updates)
 from .comfy import ComfyClient, ComfyError
 from .photocraft_client import PhotoCraftClient, PhotoCraftError
+from .photoshoot import SHOT_COUNTS, reshoot, run_photoshoot
 from .picker import Picker
 from .style_panel import StylePanel
 from .pipeline import (CREATE_CHOICES, EXPAND_CHOICES, FIND, MAX_VARIATIONS, UserFacingError, create, create_size,
@@ -180,6 +182,7 @@ class App:
         self.picker: Picker | None = None   # the "Choose a result" window, while open
         self.last_results = None            # the last results with one in PhotoCraft (Other results swaps it)
         self.tagged = False                 # the layer selected in PhotoCraft has saved results
+        self.shoot_tagged = False           # the layer selected in PhotoCraft is a shot of a photoshoot
         self.theme_name = self.settings.last_theme
         self.mode = "image"            # "selection" / "image" (nothing selected) / "empty" (no document open)
         self.reference: str | None = None   # path of the optional reference picture
@@ -264,6 +267,9 @@ class App:
         self.style_btn.pack(side="left")
         self.ref_btn = button(icon="image", command=self.reference_menu)
         self.ref_btn.pack(side="left")
+        self.shoot_btn = button(icon="camera", command=self.shoot_menu,
+                                tooltip="Photoshoot: a set of matching shots of a product or a person")
+        self.shoot_btn.pack(side="left")
         self.count_btn = button(icon="stack", text=str(self.settings.variations), chevron=True,
                                 command=self.count_menu, tooltip="How many results to choose from")
         self.count_btn.pack(side="left")
@@ -282,10 +288,12 @@ class App:
                                  tooltip="A new picture from the prompt, opens as a new document")
         self.others_btn = button(icon="stack", text="Other results", kind="outline", command=self.show_other_results,
                                  tooltip="Swap the result you placed for another one from the same Generate")
+        self.reshoot_btn = button(icon="camera", text="Reshoot", kind="outline", command=self.reshoot_shot,
+                                  tooltip="Make this shot again (same shoot, same set)")
         self.gen_btn = button(icon="spark", text="Generate", kind="primary", command=self._generate_or_cancel)
         self.more_btn = button(icon="more", command=self.more_menu, tooltip="Settings, connection, version")
         self.actions = [self.rm_btn, self.sel_btn, self.exp_btn, self.up_btn, self.create_btn, self.others_btn,
-                        self.gen_btn]
+                        self.reshoot_btn, self.gen_btn]
         self.more_btn.pack(side="right", padx=(4, 0))
         if self.update_info:
             self.more_btn.set_on(False, badge=True)
@@ -311,6 +319,8 @@ class App:
         if (self.last_results is not None or self.tagged) and self.picker is None and not self.busy \
                 and self.mode != "empty":
             shown = shown[:-1] + [self.others_btn, shown[-1]]
+        if self.shoot_tagged and self.picker is None and not self.busy and self.mode != "empty":
+            shown = shown[:-1] + [self.reshoot_btn, shown[-1]]
         for b in reversed(shown):  # right-aligned, next to the ⋯ button
             b.pack(side="right", padx=(4, 0))
         style = self._style_label() if self.mode != "selection" else ""  # fills don't use the style
@@ -332,7 +342,7 @@ class App:
             self.gen_btn.configure_button(icon="spark", text="Generate", kind="primary", tooltip=(
                 "Fill the selection (Enter)" if self.mode == "selection" else "Change the whole image (Enter)"))
         for b in (self.rm_btn, self.sel_btn, self.exp_btn, self.up_btn, self.create_btn, self.count_btn,
-                  self.presets_btn, self.style_btn, self.ref_btn):
+                  self.presets_btn, self.style_btn, self.ref_btn, self.shoot_btn):
             b.set_enabled(not self.busy)
 
     def set_mode(self, mode: str) -> None:
@@ -464,6 +474,48 @@ class App:
                 subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", path])
         except OSError as e:
             self.say(f"Couldn't open {path}: {e}", BAD, hide_after=7000)
+
+    def shoot_menu(self) -> None:
+        loaded = shoots.load()
+        items = [("header", "Photoshoot")]
+        for kind, label in (("product", "Product"), ("people", "People")):
+            names = [s.name for s in loaded if s.kind == kind]
+            if names:
+                items.append(("sub", label, [("item", n, lambda n=n: self._pick_shoot(n)) for n in names]))
+        items += [("sep",), ("header", "Shots")]
+        items += [("check", f"{n} shots", lambda n=n: self._set_shoot_count(n), n == self.settings.shoot_count)
+                  for n in SHOT_COUNTS]
+        items.append(("sub", "Shape", [("check", c, lambda c=c: self._set_create_choice(c),
+                                        c == self.settings.create_choice) for c in CREATE_CHOICES]))
+        items += [("sep",), ("item", "Edit shoots…", self._edit_shoots, "folder")]
+        self._menu(self.shoot_btn, items)
+
+    def _pick_shoot(self, name: str) -> None:
+        start = str(Path(self.reference).parent) if self.reference else None
+        path = filedialog.askopenfilename(
+            parent=self.root, title=f"Photoshoot: {name} – choose the photo", initialdir=start,
+            filetypes=[("Pictures", "*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff"), ("All files", "*.*")])
+        if path:
+            self.start("photoshoot", choice=name, what=path)
+
+    def _set_shoot_count(self, n: int) -> None:
+        s = Settings.load()
+        s.shoot_count = self.settings.shoot_count = n
+        s.save()
+
+    def _edit_shoots(self) -> None:
+        shoots.load()  # writes the file with the defaults if it isn't there yet
+        path = str(shoots.SHOOTS_FILE)
+        try:
+            if sys.platform == "win32":
+                os.startfile(path)  # noqa: S606
+            else:
+                subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", path])
+        except OSError as e:
+            self.say(f"Couldn't open {path}: {e}", BAD, hide_after=7000)
+
+    def reshoot_shot(self) -> None:
+        self.start("reshoot")
 
     def _show_style(self) -> None:
         name = self._style_label()
@@ -694,9 +746,9 @@ class App:
                     last = mode
                 if layer != last_layer:  # another layer selected: is it one with results to swap between?
                     last_layer = layer
-                    tagged = bool(layer and layer[2] is not None
-                                  and results_store.tag_of(pc.layer_metadata(layer[2])))
-                    self.events.put(("tagged", tagged))
+                    packet = pc.layer_metadata(layer[2]) if layer and layer[2] is not None else None
+                    self.events.put(("tagged", bool(results_store.tag_of(packet))))
+                    self.events.put(("shoot_tagged", bool(shoot_store.tag_of(packet))))
                 n += 1
                 if pc.mode == "desktop" and n % 5 == 0:
                     self.events.put(("theme", (pc.call("ui.inspect", {}) or {}).get("theme")))
@@ -720,7 +772,7 @@ class App:
             prompt = presets.prompt_for(preset) or ""
         else:
             prompt = self.prompt.get() if job in ("fill", "remove", "create") else ""  # the prompt belongs to Generate
-        if what and not label:
+        if what and not label and job != "photoshoot":
             self.settings.remember_prompt(what)  # typed words used to find things go in the history too
         if job == "upscale":
             self.settings.upscale_factor = factor or self.settings.upscale_factor
@@ -729,7 +781,7 @@ class App:
         elif job == "create":
             self.settings.create_choice = choice or self.settings.create_choice
             self.settings.remember_prompt(prompt)
-        elif job in ("select", "remove_things", "cutout", "faces", "enhance") or preset:
+        elif job in ("select", "remove_things", "cutout", "faces", "enhance", "photoshoot", "reshoot") or preset:
             pass
         else:
             self.settings.remember_prompt(prompt)
@@ -738,7 +790,20 @@ class App:
         self.cancel.clear()
         self._arrange()
         self.progress_busy()
-        if job == "select":
+        if job == "photoshoot":
+            def fn(_prompt, settings, status, progress, cancel):
+                return run_photoshoot(choice, what, settings, status, progress, cancel)
+            self.say(f"Photoshoot: {choice}…", None)
+        elif job == "reshoot":
+            def fn(_prompt, settings, status, progress, cancel):
+                results = reshoot(settings, status, progress, cancel)
+                if len(results.images) > 1:
+                    self.events.put(("pick", results))
+                    return None  # the picker takes it from here
+                status("Swapping the new shot in…")
+                return swap(results, 0, settings)
+            self.say("Reshooting…", None)
+        elif job == "select":
             def fn(_prompt, settings, status, progress, cancel):
                 return select_things(what, settings, status, progress, cancel, label=label)
             self.say(f"Looking for {label or what}…", None)
@@ -837,7 +902,7 @@ class App:
             result = fn(prompt, self.settings, lambda s: self.events.put(("status", s)),
                         lambda f: self.events.put(("progress", f)), self.cancel)
             if result is not None:
-                hint = "" if result.startswith(("Selected", "Created", "Upscaled")) \
+                hint = "" if result.startswith(("Selected", "Created", "Upscaled", "Photoshoot")) \
                     else " (Ctrl+Z in PhotoCraft undoes it.)"
                 self.events.put(("done", (True, f"Done: {result}.{hint}")))
         except UserFacingError as e:
@@ -875,6 +940,10 @@ class App:
                 elif kind == "tagged":
                     if value != self.tagged:
                         self.tagged = value
+                        self._arrange()
+                elif kind == "shoot_tagged":
+                    if value != self.shoot_tagged:
+                        self.shoot_tagged = value
                         self._arrange()
                 elif kind == "reopen":
                     self.choose(value)
