@@ -27,3 +27,9 @@ def test_an_unknown_preset_does_nothing():
     bar = _bar()
     App.use_preset(bar, "Presets…")
     assert bar.started == [] and bar.said == []
+
+
+def test_reflection_presets_for_windows_and_glasses():
+    from genfill.presets import prompt_for
+    assert "window glass" in prompt_for("Remove window reflections")
+    assert "glasses" in prompt_for("Remove glare from glasses")

@@ -22,6 +22,14 @@ PRESETS: list[tuple[str, str]] = [
      "it." + KEEP),
     ("Sky: dramatic storm",
      "Replace the sky with dark dramatic storm clouds, and adjust the scene's light to match it." + KEEP),
+    ("Remove window reflections",
+     "Remove the reflections in the window glass: the mirrored street, cars, buildings, sky and sunlight on the "
+     "glass disappear, so you see clearly through the glass to what is behind it, like a photo taken with a "
+     "polarizing filter. Keep the glass, the window frame and everything behind the glass exactly the same."),
+    ("Remove glare from glasses",
+     "Remove the glare and reflections on the lenses of the glasses so the eyes behind them are clearly visible, "
+     "as if photographed with a polarizing filter. Keep the frames, the lenses, the eye colour, the skin tone and "
+     "the face exactly the same." + KEEP),
     ("Background blur (portrait lens)",
      "Make the background softly out of focus like a portrait lens at f/1.4 with creamy bokeh; keep the main "
      "subject perfectly sharp." + KEEP),
