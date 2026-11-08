@@ -1,3 +1,4 @@
+import shutil
 import threading
 
 import pytest
@@ -5,8 +6,8 @@ from PIL import Image
 
 from genfill import shoot_store, shoots
 from genfill.comfy import ComfyError
-from genfill.photoshoot import run_photoshoot
-from genfill.pipeline import UserFacingError, create_size
+from genfill.photoshoot import reshoot, run_photoshoot
+from genfill.pipeline import UserFacingError, create_size, swap
 from genfill.settings import Settings
 from test_pipeline import FakeComfy, FakePC, _doc
 
@@ -180,3 +181,43 @@ def test_unknown_shoot_and_unreadable_photo_are_plain_errors(tmp_path):
     with pytest.raises(UserFacingError, match="Can't open"):
         run_photoshoot("Luxury dark", tmp_path / "missing.jpg", _settings(tmp_path), print, print,
                        threading.Event(), pc=ShootPC(_doc(), None, tmp_path), comfy=ShootComfy())
+
+
+def _shot_then(tmp_path, k=4, variations=1):
+    pc, comfy = ShootPC(_doc(), None, tmp_path), ShootComfy()
+    _shoot(tmp_path, comfy, pc)
+    pc.active = pc.layers[k - 1]          # shot k selected in PhotoCraft
+    return pc, comfy, _settings(tmp_path, variations=variations)
+
+
+def test_reshoot_redraws_that_shot_and_swaps_it_in_place(tmp_path):
+    pc, comfy, s = _shot_then(tmp_path, k=4)
+    r = reshoot(s, print, print, threading.Event(), pc=pc, comfy=comfy)
+    assert len(r.images) == 1 and r.layer.startswith("Shot 4 – ")
+    assert comfy.ref_counts[-1] == 2 and comfy.prompts[-1].startswith("Another photo from the same")
+    swap(r, 0, s, pc=pc)
+    old, _, name, masked = pc.replaced[0]
+    assert name == r.layer and masked is False
+    assert shoot_store.tag_of(pc.xmp[r.placed.layer]) == (shoot_store.tag_of(pc.xmp[pc.layers[0]])[0], 4)
+
+
+def test_reshooting_the_hero_uses_the_hero_recipe(tmp_path):
+    pc, comfy, s = _shot_then(tmp_path, k=1)
+    reshoot(s, print, print, threading.Event(), pc=pc, comfy=comfy)
+    assert comfy.ref_counts[-1] == 1 and comfy.prompts[-1].startswith("A professional photoshoot photo")
+
+
+def test_reshoot_makes_as_many_versions_as_the_results_count(tmp_path):
+    pc, comfy, s = _shot_then(tmp_path, variations=3)
+    assert len(reshoot(s, print, print, threading.Event(), pc=pc, comfy=comfy).images) == 3
+
+
+def test_reshoot_refuses_untagged_layers_gone_runs_and_resized_documents(tmp_path):
+    pc, comfy, s = _shot_then(tmp_path)
+    pc.xmp = {}
+    with pytest.raises(UserFacingError, match="Select a Photoshoot layer"): reshoot(s, print, print, threading.Event(), pc=pc, comfy=comfy)
+    pc, comfy, s = _shot_then(tmp_path); shutil.rmtree(tmp_path / "shoots")
+    with pytest.raises(UserFacingError, match="no longer kept"): reshoot(s, print, print, threading.Event(), pc=pc, comfy=comfy)
+    pc, comfy, s = _shot_then(tmp_path); runs = comfy.runs; pc.doc = Image.new("RGBA", (100, 100))
+    with pytest.raises(UserFacingError, match="size changed"): reshoot(s, print, print, threading.Event(), pc=pc, comfy=comfy)
+    assert comfy.runs == runs

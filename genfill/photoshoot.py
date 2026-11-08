@@ -16,13 +16,14 @@ from PIL import Image, ImageFilter
 from . import imaging, shoot_store, shoots
 from .comfy import ComfyError, build_create_workflow
 from .photocraft_client import PhotoCraftError
-from .pipeline import (Progress, Status, UserFacingError, _clients, _exchange, _fill_holes, _reference_head,
-                       _segment, create_size, load_reference)
+from .pipeline import (MAX_VARIATIONS, Placed, Progress, Results, Status, UserFacingError, _clients, _exchange,
+                       _fill_holes, _preview, _reference_head, _segment, create_size, load_reference)
 from .settings import Settings
 
 SHOT_COUNTS = (4, 8, 12)
 SUBJECT_SIDE = 1024
 GREY = (128, 128, 128)
+NO_SHOT = "Select a Photoshoot layer (\"Shot 3 – …\") in PhotoCraft's Layers panel to reshoot it."
 NOT_FOUND = "Couldn't find the product in the photo; using the whole photo."
 
 
@@ -145,3 +146,56 @@ def run_photoshoot(shoot_name: str, photo_path: str | Path, settings: Settings, 
     if cancel.is_set():
         msg += " (cancelled)"
     return msg
+
+
+def reshoot(settings: Settings, status: Status, progress: Progress, cancel, pc=None, comfy=None) -> Results:
+    """New versions of the shot whose layer is selected in PhotoCraft, to choose from like any other results
+    (placing one is pipeline.swap). The stored hero is the look reference and is never replaced."""
+    pc, comfy = _clients(settings, pc, comfy)
+    try:
+        with pc:
+            pc.compatibility()
+            layer = pc.active_layer()
+            tag = shoot_store.tag_of(pc.layer_metadata(layer)) if layer is not None else None
+            identity = pc._identity()
+            doc = pc.document()
+    except PhotoCraftError as e:
+        raise UserFacingError(str(e)) from e
+    if tag is None:
+        raise UserFacingError(NO_SHOT)
+    run_id, k = tag
+    got = shoot_store.load_run(Path(settings.shoots_dir), run_id)
+    if got is None or not 1 <= k <= len(got[0].shots):
+        raise UserFacingError(f"This shoot's details are no longer kept; GenFill keeps the last "
+                              f"{settings.keep_results}.")
+    run, subject, hero = got
+    if (doc.width, doc.height) != tuple(run.size):
+        raise UserFacingError("The document's size changed since the shoot, so a new shot would land in the "
+                              "wrong place.")
+    name, text = run.shots[k - 1]
+    count = max(1, min(MAX_VARIATIONS, settings.variations))
+    try:
+        status("Sending to ComfyUI…")
+        comfy.check()
+        subject_name = comfy.upload(subject, "genfill_shoot_subject.png")
+        if k == 1:
+            prompt, refs = shoots.hero_prompt(run.kind, run.set_text, text), [subject_name]
+        else:
+            hero_name = comfy.upload(hero.resize(imaging.working_size(*run.size, settings.megapixels),
+                                                 Image.LANCZOS), "genfill_shoot_hero.png")
+            prompt, refs = shoots.follow_prompt(run.kind, text), [subject_name, hero_name]
+        images = []
+        for i in range(count):
+            status(f"Shot {k} – {name}: version {i + 1} of {count}…")
+            progress(i / count)
+            if cancel.is_set():
+                break
+            images.append(_make(comfy, settings, prompt, refs, run.size, cancel))
+    except ComfyError as e:
+        raise UserFacingError(str(e)) from e
+    if not images:
+        raise UserFacingError("Cancelled.")
+    progress(1.0)
+    return Results(images, [_preview(im.convert("RGBA"), None) for im in images], f"Shot {k} – {name}", False,
+                   tuple(run.size), None, tag=shoot_store.tag_packet(run_id, k),
+                   placed=Placed(-1, identity, layer))
