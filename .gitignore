@@ -6,5 +6,6 @@ settings.json
 build/
 dist/
 *.spec
-assets/
+assets/*
+!assets/styles/
 docs/samples/

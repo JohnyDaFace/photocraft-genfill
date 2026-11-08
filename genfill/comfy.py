@@ -38,18 +38,36 @@ REQUIRED_NODES = ["Flux2Scheduler", "ReferenceLatent", "SetLatentNoiseMask", "Sp
 
 
 def _loaders(models: dict) -> dict:
-    return {
+    """The model, text encoder and VAE. `models["loras"]` (optional): LoRAs chained after the model as
+    LoraLoaderModelOnly nodes, each a file name or {"name": …, "strength": …}; the last one is "model"."""
+    wf = {
         "unet": {"class_type": "UNETLoader", "inputs": {"unet_name": models["unet"], "weight_dtype": "default"}},
         "clip": {"class_type": "CLIPLoader", "inputs": {"clip_name": models["clip"], "type": "flux2"}},
         "vae": {"class_type": "VAELoader", "inputs": {"vae_name": models["vae"]}},
     }
+    model = ["unet", 0]
+    for i, lora in enumerate(models.get("loras") or []):
+        name, strength = (lora, 1.0) if isinstance(lora, str) else (lora.get("name"), lora.get("strength", 1.0))
+        if not name:
+            continue
+        wf[f"lora{i}"] = {"class_type": "LoraLoaderModelOnly",
+                          "inputs": {"model": model, "lora_name": name, "strength_model": float(strength)}}
+        model = [f"lora{i}", 0]
+    return wf
 
 
-def _sampling(latent: list, positive: list, seed: int, sigmas: list, out_prefix: str) -> dict:
+def _model_ref(wf: dict) -> list:
+    """The model to sample with: the last LoRA in the chain, or the plain model."""
+    loras = sorted((int(k[4:]) for k in wf if k.startswith("lora") and k[4:].isdigit()))
+    return [f"lora{loras[-1]}", 0] if loras else ["unet", 0]
+
+
+def _sampling(latent: list, positive: list, seed: int, sigmas: list, out_prefix: str,
+              model: list = ("unet", 0)) -> dict:
     return {
         "neg": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": positive}},
         "guider": {"class_type": "CFGGuider",
-                   "inputs": {"model": ["unet", 0], "positive": positive, "negative": ["neg", 0], "cfg": 1.0}},
+                   "inputs": {"model": list(model), "positive": positive, "negative": ["neg", 0], "cfg": 1.0}},
         "sampler": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
         "noise": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
         "sample": {"class_type": "SamplerCustomAdvanced",
@@ -60,10 +78,10 @@ def _sampling(latent: list, positive: list, seed: int, sigmas: list, out_prefix:
     }
 
 
-def _add_references(wf: dict, conditioning: list, images: list[str]) -> list:
-    """Chain one ReferenceLatent per extra image after `conditioning` (Klein sees them as image 2, 3…);
-    returns the conditioning to sample with."""
-    for i, name in enumerate(images, 2):
+def _add_references(wf: dict, conditioning: list, images: list[str], first: int = 2) -> list:
+    """Chain one ReferenceLatent per extra image after `conditioning` (Klein sees them as image 2, 3…,
+    or from `first`); returns the conditioning to sample with."""
+    for i, name in enumerate(images, first):
         wf[f"extra{i}_image"] = {"class_type": "LoadImage", "inputs": {"image": name}}
         wf[f"extra{i}_encode"] = {"class_type": "VAEEncode",
                                   "inputs": {"pixels": [f"extra{i}_image", 0], "vae": ["vae", 0]}}
@@ -103,26 +121,54 @@ def build_fill_workflow(image_name: str, mask_name: str, prompt: str, seed: int,
         wf["ref_image"] = {"class_type": "LoadImage", "inputs": {"image": ref_name}}
         wf["ref_encode"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["ref_image", 0], "vae": ["vae", 0]}}
     wf.update(_sampling(["masked", 0], _add_references(wf, ["ref", 0], list(extra_refs)), seed,
-                        _sigmas(wf, denoise), "genfill"))
+                        _sigmas(wf, denoise), "genfill", _model_ref(wf)))
     return wf
 
 
 def build_edit_workflow(image_name: str, prompt: str, seed: int, steps: int,
                         width: int, height: int, models: dict, extra_refs: list[str] = (),
-                        denoise: float = 1.0) -> dict:
+                        denoise: float = 1.0, self_reference: bool = True) -> dict:
     """Instruction edit of the whole picture ("make it night", "change the jacket to red"): Klein
     redraws the image from full noise while following its reference, so what the prompt doesn't
-    mention stays the same."""
+    mention stays the same. `self_reference=False` (with denoise < 1): a plain partial redraw that does
+    not show the picture as a reference, so Klein doesn't copy its blur (Fix faces); `extra_refs` are
+    then image 1, 2…"""
     wf = _loaders(models)
     wf.update({
         "image": {"class_type": "LoadImage", "inputs": {"image": image_name}},
         "encode": {"class_type": "VAEEncode", "inputs": {"pixels": ["image", 0], "vae": ["vae", 0]}},
         "text": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["clip", 0]}},
-        "ref": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["text", 0], "latent": ["encode", 0]}},
         "sigmas": {"class_type": "Flux2Scheduler", "inputs": {"steps": steps, "width": width, "height": height}},
     })
-    wf.update(_sampling(["encode", 0], _add_references(wf, ["ref", 0], list(extra_refs)), seed,
-                        _sigmas(wf, denoise), "genfill_edit"))
+    if self_reference:
+        wf["ref"] = {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["text", 0], "latent": ["encode", 0]}}
+        conditioning = _add_references(wf, ["ref", 0], list(extra_refs))
+    else:
+        conditioning = _add_references(wf, ["text", 0], list(extra_refs), first=1)
+    wf.update(_sampling(["encode", 0], conditioning, seed, _sigmas(wf, denoise), "genfill_edit", _model_ref(wf)))
+    return wf
+
+
+def build_create_workflow(prompt: str, seed: int, steps: int, width: int, height: int, models: dict,
+                          extra_refs: list[str] = ()) -> dict:
+    """A new picture from the prompt alone (text to image); `extra_refs` are pictures it may take an
+    object or a style from (Klein calls the first one "image 1" here)."""
+    wf = _loaders(models)
+    wf.update({
+        "text": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["clip", 0]}},
+        "latent": {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": width, "height": height,
+                                                                     "batch_size": 1}},
+        "sigmas": {"class_type": "Flux2Scheduler", "inputs": {"steps": steps, "width": width, "height": height}},
+    })
+    conditioning = ["text", 0]
+    for i, name in enumerate(extra_refs, 1):
+        wf[f"extra{i}_image"] = {"class_type": "LoadImage", "inputs": {"image": name}}
+        wf[f"extra{i}_encode"] = {"class_type": "VAEEncode",
+                                  "inputs": {"pixels": [f"extra{i}_image", 0], "vae": ["vae", 0]}}
+        wf[f"extra{i}_ref"] = {"class_type": "ReferenceLatent",
+                               "inputs": {"conditioning": conditioning, "latent": [f"extra{i}_encode", 0]}}
+        conditioning = [f"extra{i}_ref", 0]
+    wf.update(_sampling(["latent", 0], conditioning, seed, ["sigmas", 0], "genfill_create", _model_ref(wf)))
     return wf
 
 
@@ -130,21 +176,90 @@ UPSCALE_PROMPT = ("Same photo, same composition and colours, crisp high-resoluti
                   "clean edges, no artifacts.")
 
 
+UPSCALE_MODEL = "4x-UltraSharp.pth"
+UPSCALE_MODEL_URL = "https://huggingface.co/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.pth"
+
+
 def build_refine_workflow(image_name: str, prompt: str, seed: int, steps: int, denoise: float,
-                          width: int, height: int, models: dict) -> dict:
-    """Low-strength re-draw of one (already enlarged) tile: adds real detail, keeps content."""
+                          width: int, height: int, models: dict, upscale_model: str | None = None) -> dict:
+    """Low-strength re-draw of one tile: adds natural texture, keeps content. With `upscale_model` the
+    image is the small original tile, enlarged here by that model (real, crisp edges) to width×height
+    first; without it, the image is already enlarged (soft, and Klein copies what it is shown)."""
     wf = _loaders(models)
+    pixels = ["image", 0]
+    if upscale_model:
+        wf["up_model"] = {"class_type": "UpscaleModelLoader", "inputs": {"model_name": upscale_model}}
+        wf["up"] = {"class_type": "ImageUpscaleWithModel",
+                    "inputs": {"upscale_model": ["up_model", 0], "image": ["image", 0]}}
+        wf["up_size"] = {"class_type": "ImageScale", "inputs": {"image": ["up", 0], "upscale_method": "lanczos",
+                                                                "width": width, "height": height,
+                                                                "crop": "disabled"}}
+        pixels = ["up_size", 0]
     wf.update({
         "image": {"class_type": "LoadImage", "inputs": {"image": image_name}},
-        "encode": {"class_type": "VAEEncode", "inputs": {"pixels": ["image", 0], "vae": ["vae", 0]}},
+        "encode": {"class_type": "VAEEncode", "inputs": {"pixels": pixels, "vae": ["vae", 0]}},
         "text": {"class_type": "CLIPTextEncode",
                  "inputs": {"text": f"{UPSCALE_PROMPT} {prompt}".strip(), "clip": ["clip", 0]}},
         "ref": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["text", 0], "latent": ["encode", 0]}},
         "sched": {"class_type": "Flux2Scheduler", "inputs": {"steps": steps, "width": width, "height": height}},
         "split": {"class_type": "SplitSigmasDenoise", "inputs": {"sigmas": ["sched", 0], "denoise": denoise}},
     })
-    wf.update(_sampling(["encode", 0], ["ref", 0], seed, ["split", 1], "genfill_up"))
+    wf.update(_sampling(["encode", 0], ["ref", 0], seed, ["split", 1], "genfill_up", _model_ref(wf)))
     return wf
+
+
+SEEDVR_MODEL = "seedvr2_7b_int8_convrot.safetensors"
+SEEDVR_VAE = "seedvr2_ema_vae_fp16.safetensors"
+SEEDVR_URL = "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/"
+SEEDVR_MODEL_URL = SEEDVR_URL + "diffusion_models/" + SEEDVR_MODEL
+SEEDVR_VAE_URL = SEEDVR_URL + "vae/" + SEEDVR_VAE
+
+
+def build_seedvr_workflow(image_name: str, seed: int, model: str = SEEDVR_MODEL, vae: str = SEEDVR_VAE,
+                          colour: str = "lab") -> dict:
+    """SeedVR2 (one-step restoration model): the image, already resized to the target size, comes back
+    the same size with real detail; colours are matched back to the input. Same graph as ComfyUI's
+    own Image Upscale (SeedVR2) template. It takes no prompt."""
+    tiled = {"tile_size": 512, "overlap": 128, "temporal_size": 4096, "temporal_overlap": 8}
+    return {
+        "image": {"class_type": "LoadImage", "inputs": {"image": image_name}},
+        "svr_vae": {"class_type": "VAELoader", "inputs": {"vae_name": vae}},
+        "svr_unet": {"class_type": "UNETLoader", "inputs": {"unet_name": model, "weight_dtype": "default"}},
+        "pre": {"class_type": "SeedVR2Preprocess", "inputs": {"resized_images": ["image", 0]}},
+        "encode": {"class_type": "VAEEncodeTiled", "inputs": {"pixels": ["pre", 0], "vae": ["svr_vae", 0], **tiled}},
+        "cond": {"class_type": "SeedVR2Conditioning",
+                 "inputs": {"model": ["svr_unet", 0], "vae_conditioning": ["encode", 0]}},
+        "sample": {"class_type": "KSampler",
+                   "inputs": {"model": ["svr_unet", 0], "positive": ["cond", 0], "negative": ["cond", 1],
+                              "latent_image": ["encode", 0], "seed": seed, "steps": 1, "cfg": 1.0,
+                              "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0}},
+        "decode": {"class_type": "VAEDecodeTiled", "inputs": {"samples": ["sample", 0], "vae": ["svr_vae", 0], **tiled}},
+        "post": {"class_type": "SeedVR2PostProcessing",
+                 "inputs": {"images": ["decode", 0], "original_resized_images": ["image", 0],
+                            "color_correction_method": colour}},
+        "out": {"class_type": "PreviewImage", "inputs": {"images": ["post", 0]}},
+    }
+
+
+SEGMENT_MODEL = "sam3.1_multiplex_fp16.safetensors"
+SEGMENT_MODEL_URL = ("https://huggingface.co/Comfy-Org/sam3.1/resolve/main/checkpoints/"
+                     "sam3.1_multiplex_fp16.safetensors")
+
+
+def build_segment_workflow(image_name: str, what: str, model: str = SEGMENT_MODEL,
+                           threshold: float = 0.5) -> dict:
+    """SAM 3: a mask of everything in the picture that matches `what` ("sky", "person", "the red car").
+    Same graph as ComfyUI's own Image Segmentation (SAM3) template; the mask comes back as a picture."""
+    return {
+        "seg_model": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": model}},
+        "image": {"class_type": "LoadImage", "inputs": {"image": image_name}},
+        "seg_text": {"class_type": "CLIPTextEncode", "inputs": {"text": what, "clip": ["seg_model", 1]}},
+        "detect": {"class_type": "SAM3_Detect",
+                   "inputs": {"model": ["seg_model", 0], "image": ["image", 0], "conditioning": ["seg_text", 0],
+                              "threshold": threshold, "refine_iterations": 2, "individual_masks": False}},
+        "mask_image": {"class_type": "MaskToImage", "inputs": {"mask": ["detect", 0]}},
+        "out": {"class_type": "PreviewImage", "inputs": {"images": ["mask_image", 0]}},
+    }
 
 
 class ComfyClient:
@@ -200,6 +315,40 @@ class ComfyClient:
                 problems.append(f"ComfyUI doesn't have '{models.get(slot)}'. Put it in ComfyUI/models/{folder}/ "
                                 f"(download: {url}) or pick another file in Settings.")
         return problems
+
+    def check_segment(self, model: str = SEGMENT_MODEL) -> list[str]:
+        """Plain-language problems that would stop the smart selections (empty = ready)."""
+        if not self._json("/object_info/SAM3_Detect").get("SAM3_Detect"):
+            return ["Your ComfyUI is too old for SAM 3 selections. Update ComfyUI and restart it."]
+        info = self._json("/object_info/CheckpointLoaderSimple").get("CheckpointLoaderSimple", {})
+        spec = info.get("input", {}).get("required", {}).get("ckpt_name", [[]])
+        have = spec[0] if spec and isinstance(spec[0], list) else []
+        if model not in have:
+            return [f"ComfyUI doesn't have the SAM 3 model '{model}'. Put it in ComfyUI/models/checkpoints/ "
+                    f"(download: {SEGMENT_MODEL_URL})."]
+        return []
+
+    def _choices(self, node: str, field: str) -> list[str]:
+        """The files a loader node offers in one of its dropdowns."""
+        info = self._json(f"/object_info/{node}").get(node, {})
+        spec = info.get("input", {}).get("required", {}).get(field, [[]])
+        if spec and isinstance(spec[0], list):
+            return spec[0]
+        return (spec[1] or {}).get("options", []) if len(spec) > 1 else []
+
+    def has_upscale_model(self, model: str = UPSCALE_MODEL) -> bool:
+        """Whether ComfyUI has this upscale model (ComfyUI/models/upscale_models)."""
+        return bool(model) and model in self._choices("UpscaleModelLoader", "model_name")
+
+    def has_lora(self, name: str) -> bool:
+        """Whether ComfyUI has this LoRA (ComfyUI/models/loras)."""
+        return bool(name) and name in self._choices("LoraLoaderModelOnly", "lora_name")
+
+    def has_seedvr(self, model: str = SEEDVR_MODEL, vae: str = SEEDVR_VAE) -> bool:
+        """Whether ComfyUI can run SeedVR2: its nodes, the model and its VAE."""
+        if not model or not self._json("/object_info/SeedVR2Conditioning").get("SeedVR2Conditioning"):
+            return False
+        return model in self._choices("UNETLoader", "unet_name") and vae in self._choices("VAELoader", "vae_name")
 
     def upload(self, img: Image.Image, name: str) -> str:
         buf = io.BytesIO()

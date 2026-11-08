@@ -3,23 +3,29 @@ selection. Something selected: fill or remove it. Nothing selected: edit, expand
 Styled like PhotoCraft's active Pro theme. Work runs on a thread; the UI polls a queue."""
 from __future__ import annotations
 
+import os
 import queue
+import socket
+import subprocess
 import sys
 import threading
 import time
 import tkinter as tk
 import webbrowser
+from dataclasses import replace
 from pathlib import Path
 from tkinter import filedialog, messagebox
 
 from PIL import ImageTk
 
-from . import __version__, presets, setup_env, theme, updates
+from . import __version__, autostart, presets, results_store, setup_env, style_thumbs, styles, theme, updates
 from .comfy import ComfyClient, ComfyError
 from .photocraft_client import PhotoCraftClient, PhotoCraftError
 from .picker import Picker
-from .pipeline import (EXPAND_CHOICES, MAX_VARIATIONS, UserFacingError, expand, generate, load_reference, place,
-                       run_upscale, similar)
+from .style_panel import StylePanel
+from .pipeline import (CREATE_CHOICES, EXPAND_CHOICES, FIND, MAX_VARIATIONS, UserFacingError, create, create_size,
+                       SWAP_GONE, enhance, expand, fix_faces, generate, load_reference, place, remove_background,
+                       remove_things, results_for_layer, run_upscale, select_things, similar, swap)
 from .settings import SETTINGS_FILE, Settings
 from .settings_dialog import SettingsDialog
 from .widgets import (BarButton, PopupMenu, Tooltip, minimize, round_corners, screen_area, shape_image,
@@ -29,7 +35,8 @@ TITLE = "Generative Fill for PhotoCraft"
 BORDERLESS = sys.platform == "win32"  # elsewhere a borderless window can't reliably take keyboard focus
 OK, BAD, UNKNOWN = "#2d9d78", "#e68619", None  # connection dot colours (Spectrum green / orange)
 PLACEHOLDER = {"selection": "Describe what to fill in, or leave empty…",
-               "image": "Describe a change to the whole image…"}
+               "image": "Describe a change to the whole image…",
+               "empty": "Describe a picture to create…"}
 
 
 class PromptField(tk.Canvas):
@@ -45,12 +52,20 @@ class PromptField(tk.Canvas):
                                  tooltip="Recent prompts")
         self._bg = None
         self._draw_bg()
-        self.create_window(12, 16, window=self.entry, anchor="w", width=width - 12 - 34, height=20)
-        self.create_window(width - 5, 16, window=self.history, anchor="e")
+        self._entry_win = self.create_window(12, 16, window=self.entry, anchor="w", width=width - 12 - 34, height=20)
+        self._history_win = self.create_window(width - 5, 16, window=self.history, anchor="e")
+        self.bind("<Configure>", self._resized)  # it stretches to the bar's width
         self.entry.bind("<FocusIn>", self._focus_in)
         self.entry.bind("<FocusOut>", self._focus_out)
         self.entry.bind("<Return>", lambda e: on_enter())
         self.bind("<Button-1>", lambda e: self.entry.focus_set())
+
+    def _resized(self, e) -> None:
+        if e.width != self.w and e.width > 60:
+            self.w = e.width
+            self.itemconfigure(self._entry_win, width=self.w - 12 - 34)
+            self.coords(self._history_win, self.w - 5, 16)
+            self._draw_bg()
 
     def _draw_bg(self):
         img = ImageTk.PhotoImage(shape_image(self.w, 32, 8, self.p.field,
@@ -149,19 +164,27 @@ class StatusPill(tk.Toplevel):
 
 
 class App:
-    def __init__(self, root: tk.Tk):
+    def __init__(self, root: tk.Tk, background: bool = False):
         self.root = root
+        self.background = background  # started with Windows: hidden until PhotoCraft opens
+        self.visible = True
+        self.photocraft_seen = False  # connected at least once since shown (so a close can hide it)
+        self._photocraft_down = 0     # failed checks in a row
         self.settings = Settings.load()
         if not SETTINGS_FILE.exists():
             self.settings.save()
         self.events: queue.Queue = queue.Queue()
         self.cancel = threading.Event()
         self.busy = False
+        self.picker: Picker | None = None   # the "Choose a result" window, while open
+        self.last_results = None            # the last results with one in PhotoCraft (Other results swaps it)
+        self.tagged = False                 # the layer selected in PhotoCraft has saved results
         self.theme_name = self.settings.last_theme
-        self.mode = "image"            # "selection" when PhotoCraft has a selection, else "image"
+        self.mode = "image"            # "selection" / "image" (nothing selected) / "empty" (no document open)
         self.reference: str | None = None   # path of the optional reference picture
         self.update_info: tuple[str, str] | None = None  # (version, url) when a newer release exists
-        self.conn = {"PhotoCraft": (UNKNOWN, "checking…"), "ComfyUI": (UNKNOWN, "checking…")}
+        self.conn = {"PhotoCraft": (UNKNOWN, "checking…"), "ComfyUI": (UNKNOWN, "checking…"),
+                     "Select (SAM 3)": (UNKNOWN, "checking…")}
         self.last_message = ""
         self._prompt_text = ""
         self._progress_after = None
@@ -187,7 +210,10 @@ class App:
             root.after(50, lambda: round_corners(root))
         root.bind("<Configure>", lambda e: self.pill and self.pill.follow())
         root.bind_all("<Escape>", lambda e: self._generate_or_cancel() if self.busy else None)
-        self.say("Checking connections…", None)
+        if background:
+            self.hide()
+        else:
+            self.say("Checking connections…", None)
         self.root.after(100, self.poll)
         threading.Thread(target=self.check_connections, daemon=True).start()
         threading.Thread(target=self.watch, daemon=True).start()
@@ -206,7 +232,10 @@ class App:
         self.root.configure(bg=p.field_border if BORDERLESS else p.chrome)
         outer = self.frame = tk.Frame(self.root, bg=p.chrome)
         outer.pack(fill="both", expand=True, padx=1 if BORDERLESS else 0, pady=1 if BORDERLESS else 0)
-        row = tk.Frame(outer, bg=p.chrome, padx=6, pady=7)
+        # two rows: the prompt on top, the buttons under it
+        top = tk.Frame(outer, bg=p.chrome, padx=6, pady=0)
+        top.pack(fill="x", pady=(7, 0))
+        row = tk.Frame(outer, bg=p.chrome, padx=6, pady=6)
         row.pack(fill="x")
 
         def sep():
@@ -216,7 +245,7 @@ class App:
             return BarButton(row, p, f["button"] if kw.get("kind") == "primary" else f["body"], **kw)
 
         # drag grip
-        grip = tk.Canvas(row, width=14, height=32, bg=p.chrome, highlightthickness=0, cursor="fleur")
+        grip = tk.Canvas(top, width=14, height=32, bg=p.chrome, highlightthickness=0, cursor="fleur")
         for cx in (4, 10):
             for cy in (10, 16, 22):
                 grip.create_oval(cx - 1.5, cy - 1.5, cx + 1.5, cy + 1.5, fill=p.text_faint, outline="")
@@ -226,10 +255,12 @@ class App:
         grip.bind("<B1-Motion>", self._drag)
         grip.bind("<ButtonRelease-1>", self._drag_end)
 
-        self.prompt = PromptField(row, p, f["body"], 300, lambda: self.start("fill"), self.history_menu)
-        self.prompt.pack(side="left", padx=(0, 4))
+        self.prompt = PromptField(top, p, f["body"], 440, lambda: self.start("fill"), self.history_menu)
+        self.prompt.pack(side="left", fill="x", expand=True)
         self.presets_btn = button(icon="presets", command=self.presets_menu, tooltip="Presets")
         self.presets_btn.pack(side="left")
+        self.style_btn = button(icon="palette", command=self.style_panel)
+        self.style_btn.pack(side="left")
         self.ref_btn = button(icon="image", command=self.reference_menu)
         self.ref_btn.pack(side="left")
         self.count_btn = button(icon="stack", text=str(self.settings.variations), chevron=True,
@@ -240,13 +271,20 @@ class App:
         # actions: the ones that fit the current mode are shown
         self.rm_btn = button(icon="eraser", text="Remove", kind="outline", command=lambda: self.start("remove"),
                              tooltip="Remove what's selected (type what it is for better results)")
+        self.sel_btn = button(icon="target", text="Select", kind="outline", chevron=True, command=self.select_menu,
+                              tooltip="Find things by name (SAM 3): select, remove, or remove the background")
         self.exp_btn = button(icon="expand", text="Expand", kind="outline", chevron=True, command=self.expand_menu,
                               tooltip="Bigger canvas, new edges filled to match")
         self.up_btn = button(icon="upscale", text="Upscale", kind="outline", chevron=True, command=self.upscale_menu,
-                             tooltip="Bigger copy with new detail, opens as a new document")
+                             tooltip="Bigger copy with new detail, or Enhance at the same size")
+        self.create_btn = button(icon="create", text="Create", kind="outline", chevron=True, command=self.create_menu,
+                                 tooltip="A new picture from the prompt, opens as a new document")
+        self.others_btn = button(icon="stack", text="Other results", kind="outline", command=self.show_other_results,
+                                 tooltip="Swap the result you placed for another one from the same Generate")
         self.gen_btn = button(icon="spark", text="Generate", kind="primary", command=self._generate_or_cancel)
         self.more_btn = button(icon="more", command=self.more_menu, tooltip="Settings, connection, version")
-        self.actions = [self.rm_btn, self.exp_btn, self.up_btn, self.gen_btn]
+        self.actions = [self.rm_btn, self.sel_btn, self.exp_btn, self.up_btn, self.create_btn, self.others_btn,
+                        self.gen_btn]
         self.more_btn.pack(side="right", padx=(4, 0))
         if self.update_info:
             self.more_btn.set_on(False, badge=True)
@@ -259,22 +297,41 @@ class App:
         self.pill = StatusPill(self.root, p, f["body"])
         self.prompt.set(self._prompt_text)
         self._show_reference()
+        self._show_style()
         self._arrange()
 
     def _arrange(self) -> None:
         """Show the buttons that fit the mode and the busy state."""
         for b in self.actions:
             b.pack_forget()
-        shown = [self.rm_btn] if self.mode == "selection" else [self.exp_btn, self.up_btn]
-        for b in shown + [self.gen_btn]:
-            b.pack(side="left", padx=(4, 0))
-        self.prompt.set_placeholder(PLACEHOLDER[self.mode])
+        shown = {"selection": [self.rm_btn, self.gen_btn],
+                 "image": [self.sel_btn, self.exp_btn, self.up_btn, self.create_btn, self.gen_btn],
+                 "empty": [self.create_btn, self.gen_btn]}[self.mode]
+        if (self.last_results is not None or self.tagged) and self.picker is None and not self.busy \
+                and self.mode != "empty":
+            shown = shown[:-1] + [self.others_btn, shown[-1]]
+        for b in reversed(shown):  # right-aligned, next to the ⋯ button
+            b.pack(side="right", padx=(4, 0))
+        style = self._style_label() if self.mode != "selection" else ""  # fills don't use the style
+        if style and self.mode == "image":  # Generate with nothing typed just applies the style
+            self.prompt.set_placeholder(f"Describe a change, or leave empty to make it {style}…")
+        else:
+            self.prompt.set_placeholder(PLACEHOLDER[self.mode] + (f"   Style: {style}" if style else ""))
+        empty = self.mode == "empty"
+        # nothing open: the menu button only picks the shape; the blue button creates
+        self.create_btn.configure_button(
+            text=self.settings.create_choice if empty else "Create",
+            tooltip="Shape of the new picture" if empty else "A new picture from the prompt, opens as a new document")
         if self.busy:
             self.gen_btn.configure_button(icon="x", text="Cancel", kind="outline", tooltip="Stop (Esc)")
+        elif empty:
+            self.gen_btn.configure_button(icon="spark", text="Create", kind="primary",
+                                          tooltip="Create a new picture from the prompt (Enter)")
         else:
             self.gen_btn.configure_button(icon="spark", text="Generate", kind="primary", tooltip=(
                 "Fill the selection (Enter)" if self.mode == "selection" else "Change the whole image (Enter)"))
-        for b in (self.rm_btn, self.exp_btn, self.up_btn, self.count_btn, self.presets_btn, self.ref_btn):
+        for b in (self.rm_btn, self.sel_btn, self.exp_btn, self.up_btn, self.create_btn, self.count_btn,
+                  self.presets_btn, self.style_btn, self.ref_btn):
             b.set_enabled(not self.busy)
 
     def set_mode(self, mode: str) -> None:
@@ -367,6 +424,64 @@ class App:
                 items.append(("item", name, lambda n=name: self.use_preset(n)))
         self._menu(self.presets_btn, items)
 
+    def _set_style(self, name: str) -> None:
+        s = Settings.load()
+        s.style = self.settings.style = name
+        s.save()
+        self._show_style()
+        self._arrange()
+        self.say(f"Style on: {name}. It's added to Create and whole-image edits until you turn it off."
+                 if name else "Style off.", None, hide_after=5000)
+
+    def _set_angle(self, name: str) -> None:
+        s = Settings.load()
+        s.angle = self.settings.angle = name
+        s.save()
+        self._show_style()
+        self._arrange()
+        self.say(f"Angle on: {name}. It's added, with the style, to Create and whole-image edits until you turn "
+                 "it off." if name else "Angle off.", None, hide_after=5000)
+
+    def _clear_styles(self) -> None:
+        s = Settings.load()
+        s.style = s.angle = self.settings.style = self.settings.angle = ""
+        s.save()
+        self._show_style()
+        self._arrange()
+        self.say("Style and angle off.", None, hide_after=4000)
+
+    def _style_label(self) -> str:
+        return " · ".join(x for x in (self.settings.style, self.settings.angle) if x)
+
+    def _edit_styles(self) -> None:
+        styles.load()  # writes the file with the defaults if it isn't there yet
+        path = str(styles.STYLES_FILE)
+        try:
+            if sys.platform == "win32":
+                os.startfile(path)  # noqa: S606
+            else:
+                subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", path])
+        except OSError as e:
+            self.say(f"Couldn't open {path}: {e}", BAD, hide_after=7000)
+
+    def _show_style(self) -> None:
+        name = self._style_label()
+        self.style_btn.set_on(bool(name))
+        self.style_btn.configure_button(text=name, tooltip=f"Style: {name} (click to change or turn off)" if name
+                                        else "Style: a look added to Create and whole-image edits")
+
+    def style_panel(self) -> None:
+        if self.busy:
+            return
+
+        def make(name, text):
+            if self.busy:
+                raise RuntimeError("busy")  # don't slow down a job: the next opening makes it
+            return style_thumbs.make(name, text, Settings.load())
+        StylePanel(self.root, self.p, self.fonts, self.settings.style, self._set_style, make_missing=make,
+                   width=self.root.winfo_width(), on_edit=self._edit_styles, angle=self.settings.angle,
+                   on_angle=self._set_angle, on_clear=self._clear_styles)
+
     def count_menu(self) -> None:
         n = self.settings.variations
         items = [("header", "Results to choose from")]
@@ -374,16 +489,72 @@ class App:
                    lambda i=i: self._set_count(i), i == n) for i in range(1, MAX_VARIATIONS + 1)]
         self._menu(self.count_btn, items)
 
+    def select_menu(self) -> None:
+        typed = self.prompt.get().strip()
+        short = (typed if len(typed) <= 28 else typed[:27] + "…")
+        hint = lambda: (self.say('Type what to find in the prompt box first, for example "the dog" or "the red '  # noqa: E731
+                                 'car", then pick it here.', None, hide_after=7000), self.prompt.entry.focus_set())
+        mine = (lambda: self.start("select", what=typed)) if typed else hint
+        items = [("header", "Select"),
+                 ("item", f"“{short}”" if typed else "What you type…", mine),
+                 ("item", "Sky", lambda: self.start("select", what=FIND["sky"][0], label=FIND["sky"][1])),
+                 ("item", "People", lambda: self.start("select", what=FIND["people"][0], label=FIND["people"][1])),
+                 ("sep",), ("header", "Remove"),
+                 ("item", f"“{short}”" if typed else "What you type…",
+                  (lambda: self.start("remove_things", what=typed)) if typed else hint),
+                 ("item", "People", lambda: self.start("remove_things", what=FIND["people"][0],
+                                                       label=FIND["people"][1])),
+                 ("item", "Cars", lambda: self.start("remove_things", what=FIND["cars"][0], label=FIND["cars"][1])),
+                 ("sep",),
+                 ("item", f"Remove background, keep “{short}”" if typed else "Remove background…",
+                  (lambda: self.start("cutout", what=typed)) if typed else hint),
+                 ("sep",), ("header", "Faces"),
+                 ("item", "Fix faces", lambda: self.start("faces"))]
+        if typed:  # only when picked: text left in the box must never change what plain Fix faces does
+            items.append(("item", f"Fix faces: “{short}”", lambda: self.start("faces", choice="typed")))
+        if self.reference:  # the picture already chosen, by name, so it's never used by surprise
+            name = Path(self.reference).name
+            name = name if len(name) <= 28 else name[:27] + "…"
+            items.append(("item", f"Replace face with {name}", lambda: self.start("faces", choice="reference")))
+        items.append(("item", "Replace face with another photo…" if self.reference else
+                      "Replace face with a photo…", self._replace_face_with_photo))
+        self._menu(self.sel_btn, items)
+
+    def _replace_face_with_photo(self) -> None:
+        """Always asks which photo: each person needs their own."""
+        if self.choose_reference(title="Photo of the face to use: best turned the same way, with a similar "
+                                       "expression"):
+            self.start("faces", choice="reference")
+
     def expand_menu(self) -> None:
         last = self.settings.expand_choice
         items = [("header", "Expand the canvas to")]
         items += [("check", c, lambda c=c: self.start("expand", choice=c), c == last) for c in EXPAND_CHOICES]
         self._menu(self.exp_btn, items)
 
+    def create_menu(self) -> None:
+        last = self.settings.create_choice
+        pick_only = self.mode == "empty"  # nothing open: choose the shape, then click Create
+        act = self._set_create_choice if pick_only else (lambda c: self.start("create", choice=c))
+        items = [("header", "Shape of the new picture" if pick_only else "Create a new picture")]
+        items += [("check", f"{c}  ({w}×{h})", lambda c=c: act(c), c == last)
+                  for c in CREATE_CHOICES for w, h in [create_size(c, self.settings.megapixels)]]
+        items += [("sep",), ("info", "Opens as a new document")]
+        self._menu(self.create_btn, items)
+
+    def _set_create_choice(self, choice: str) -> None:
+        s = Settings.load()
+        s.create_choice = self.settings.create_choice = choice
+        s.save()
+        self._arrange()
+        self.prompt.entry.focus_set()
+
     def upscale_menu(self) -> None:
         last = self.settings.upscale_factor
         items = [("header", "Upscale to a new document")]
         items += [("check", f"{k}× larger", lambda k=k: self.start("upscale", factor=k), k == last) for k in (2, 4)]
+        items += [("sep",), ("header", "Same size"),
+                  ("item", "Enhance: crisper, better light", lambda: self.start("enhance"))]
         self._menu(self.up_btn, items)
 
     def reference_menu(self) -> None:
@@ -403,7 +574,12 @@ class App:
             items.append(("info", f"●  {name}: {text}", OK if ok else BAD if ok is False else self.p.text_dim))
         items += [("sep",),
                   ("item", "Settings…", self.open_settings, "gear"),
-                  ("item", "PhotoCraft connection…", self.setup, "plug")]
+                  ("item", "PhotoCraft connection…", self.setup, "plug"),
+                  ("sep",),
+                  ("check", "Hide while PhotoCraft is closed", self._toggle_follow, self.settings.follow_photocraft)]
+        if autostart.SUPPORTED:
+            items.append(("check", "Start with Windows (shows when PhotoCraft opens)", self._toggle_autostart,
+                          autostart.enabled()))
         if self.last_message:
             items.append(("item", "Show the last message", lambda: self.say(self.last_message, None), "history"))
         items.append(("sep",))
@@ -423,9 +599,13 @@ class App:
         self.prompt.entry.icursor("end")
 
     def use_preset(self, name: str) -> None:
-        text = presets.prompt_for(name)
-        if text:
-            self._use_prompt(text)
+        """Runs the preset straight away (the prompt box is left alone)."""
+        if presets.prompt_for(name) is None:
+            return
+        if self.mode == "empty":
+            self.say("Open a photo in PhotoCraft first, then pick the preset.", None, hide_after=6000)
+            return
+        self.start("fill", preset=name)
 
     def _set_count(self, n: int) -> None:
         s = Settings.load()
@@ -462,8 +642,21 @@ class App:
             problems = comfy.check_setup(self.settings.models)
             self.conn["ComfyUI"] = (not problems, "connected" if not problems else "models missing")
             msgs += ["ComfyUI: " + " ".join(problems)] if problems else []
+            sam = comfy.check_segment()
+            self.conn["Select (SAM 3)"] = (not sam, "ready" if not sam else "model missing (see README)")
+            if self.settings.seedvr_model and comfy.has_seedvr(self.settings.seedvr_model):
+                self.conn["Upscale"] = (True, "SeedVR2 (best)")
+            elif self.settings.upscale_model and comfy.has_upscale_model(self.settings.upscale_model):
+                self.conn["Upscale"] = (True, "4x-UltraSharp + FLUX (SeedVR2 is sharper, see README)")
+            else:
+                self.conn["Upscale"] = (False, "no upscale model, soft (see README)")
+            if self.settings.face_swap_lora and comfy.has_lora(self.settings.face_swap_lora):
+                self.conn["Replace face"] = (True, "BFS head swap (best)")
+            else:
+                self.conn["Replace face"] = (False, "face only, no BFS LoRA (see README)")
         except ComfyError as e:
             self.conn["ComfyUI"] = (False, "not reachable")
+            self.conn["Select (SAM 3)"] = (False, "needs ComfyUI")
             msgs.append(str(e))
         self.events.put(("connections", "\n".join(msgs)))
         if self.settings.check_updates:
@@ -473,7 +666,7 @@ class App:
 
     def watch(self) -> None:
         """Follow PhotoCraft's selection (and theme) so the bar shows the right buttons."""
-        pc, n, last = None, 0, None
+        pc, n, last, last_layer = None, 0, None, None
         while True:
             time.sleep(0.8)
             if self.busy:
@@ -481,18 +674,27 @@ class App:
             try:
                 if pc is None:
                     if not all(setup_env.status(self.settings.port).values()):
+                        self.events.put(("photocraft", True))  # can't tell: stay visible so it can be set up
                         time.sleep(3)
                         continue
                     pc = PhotoCraftClient(self.settings.port, Path(self.settings.token_file), timeout=5).__enter__()
+                    self.events.put(("photocraft", True))
                 try:
-                    mode = "selection" if pc.document().selection else "image"
+                    doc = pc._inspect()
+                    mode = "selection" if doc.get("selectionBounds") else "image"
+                    layer = (doc.get("name"), doc.get("path"), doc.get("activeLayer"))
                 except PhotoCraftError as e:
                     if not str(e).startswith("PhotoCraft:"):
                         raise  # the connection went away
-                    mode = "image"  # PhotoCraft answered with an error: no document open
+                    mode, layer = "empty", None  # PhotoCraft answered with an error: no document open
                 if mode != last:
                     self.events.put(("mode", mode))
                     last = mode
+                if layer != last_layer:  # another layer selected: is it one with results to swap between?
+                    last_layer = layer
+                    tagged = bool(layer and layer[2] is not None
+                                  and results_store.tag_of(pc.layer_metadata(layer[2])))
+                    self.events.put(("tagged", tagged))
                 n += 1
                 if pc.mode == "desktop" and n % 5 == 0:
                     self.events.put(("theme", (pc.call("ui.inspect", {}) or {}).get("theme")))
@@ -500,18 +702,33 @@ class App:
                 if pc is not None:
                     pc.__exit__(None, None, None)
                 pc, last = None, None
+                self.events.put(("photocraft", False))
                 time.sleep(3)
 
-    def start(self, job: str, choice: str | None = None, factor: int | None = None) -> None:
+    def start(self, job: str, choice: str | None = None, factor: int | None = None, what: str = "",
+              label: str | None = None, preset: str | None = None) -> None:
         if self.busy:
             return
+        self._forget_results()  # a new job: the last results can't be swapped in any more
         self.settings = Settings.load()
         self.settings.last_theme = self.theme_name
-        prompt = self.prompt.get() if job in ("fill", "remove") else ""  # the prompt belongs to Generate
+        if job == "fill" and self.mode == "empty" and not preset:
+            job = "create"  # nothing open: Enter creates a picture
+        if preset:  # a preset brings its own instruction; the box and the history stay as they are
+            prompt = presets.prompt_for(preset) or ""
+        else:
+            prompt = self.prompt.get() if job in ("fill", "remove", "create") else ""  # the prompt belongs to Generate
+        if what and not label:
+            self.settings.remember_prompt(what)  # typed words used to find things go in the history too
         if job == "upscale":
             self.settings.upscale_factor = factor or self.settings.upscale_factor
         elif job == "expand":
             self.settings.expand_choice = choice or self.settings.expand_choice
+        elif job == "create":
+            self.settings.create_choice = choice or self.settings.create_choice
+            self.settings.remember_prompt(prompt)
+        elif job in ("select", "remove_things", "cutout", "faces", "enhance") or preset:
+            pass
         else:
             self.settings.remember_prompt(prompt)
         self.settings.save()  # last choices and prompt history are remembered
@@ -519,7 +736,43 @@ class App:
         self.cancel.clear()
         self._arrange()
         self.progress_busy()
-        if job == "upscale":
+        if job == "select":
+            def fn(_prompt, settings, status, progress, cancel):
+                return select_things(what, settings, status, progress, cancel, label=label)
+            self.say(f"Looking for {label or what}…", None)
+        elif job == "remove_things":
+            def fn(_prompt, settings, status, progress, cancel):
+                return self._offer(remove_things(what, settings, status, progress, cancel, label=label),
+                                   settings, status)
+            self.say(f"Looking for {label or what}…", None)
+        elif job == "cutout":
+            def fn(_prompt, settings, status, progress, cancel):
+                return remove_background(what, settings, status, progress, cancel)
+            self.say(f"Looking for {what}…", None)
+        elif job == "enhance":
+            extra = self.prompt.get().strip()
+
+            def fn(_prompt, settings, status, progress, cancel):
+                return self._offer(enhance(settings, status, progress, cancel, prompt=extra), settings, status)
+            self.say("Enhancing…", None)
+        elif job == "faces":
+            reference = self.reference if choice == "reference" else None
+            extra = self.prompt.get().strip() if choice == "typed" else ""  # the box is used only when chosen
+
+            def fn(_prompt, settings, status, progress, cancel):
+                ref = load_reference(reference) if reference else None
+                return self._offer(fix_faces(settings, status, progress, cancel, prompt=extra, reference=ref),
+                                   settings, status)
+            self.say("Looking for faces…", None)
+        elif job == "create":
+            shape, reference = self.settings.create_choice, self.reference
+
+            def fn(prompt_, settings, status, progress, cancel):
+                ref = load_reference(reference) if reference else None
+                return self._offer(create(shape, prompt_, settings, status, progress, cancel, reference=ref),
+                                   settings, status)
+            self.say(f"Creating a {shape} picture…", None)
+        elif job == "upscale":
             fn = run_upscale
             self.say(f"Upscaling {self.settings.upscale_factor}×…", None)
         elif job == "expand":
@@ -529,11 +782,12 @@ class App:
                 return self._offer(expand(shape, "", settings, status, progress, cancel), settings, status)
             self.say(f"Expanding to {shape}…", None)
         else:
-            remove, reference = job == "remove", self.reference
+            remove = job == "remove"
+            reference = None if preset else self.reference  # a preset's instruction never mentions image 2
 
             def fn(*a):
-                return self._generate(*a, remove=remove, reference=reference)
-            self.say("Starting…", None)
+                return self._generate(*a, remove=remove, reference=reference, name=preset)
+            self.say(f"{preset}…" if preset else "Starting…", None)
         threading.Thread(target=self._work, args=(fn, prompt), daemon=True).start()
 
     def _generate_or_cancel(self) -> None:
@@ -543,9 +797,9 @@ class App:
         else:
             self.start("fill")
 
-    def _generate(self, prompt, settings, status, progress, cancel, remove=False, reference=None):
+    def _generate(self, prompt, settings, status, progress, cancel, remove=False, reference=None, name=None):
         ref = load_reference(reference) if reference and not remove else None
-        results = generate(prompt, settings, status, progress, cancel, reference=ref, remove=remove)
+        results = generate(prompt, settings, status, progress, cancel, reference=ref, remove=remove, name=name)
         return self._offer(results, settings, status)
 
     def _offer(self, results, settings, status):
@@ -557,11 +811,22 @@ class App:
         return place(results, 0, settings)
 
     def _place(self, results, index: int) -> None:
-        self._work(lambda *_a: place(results, index, self.settings), "")
+        """The first pick adds the result; later picks swap it for the one in PhotoCraft."""
+        def fn(*_a):
+            try:
+                text = swap(results, index, self.settings)
+            except UserFacingError as e:
+                self.events.put(("placed", (results, str(e) == SWAP_GONE)))
+                raise
+            self.events.put(("placed", (results, False)))
+            return text
+        self._work(fn, "")
 
     def _similar(self, results, index: int) -> None:
         def fn(_prompt, settings, status, progress, cancel):
             more = similar(results, index, settings, status, progress, cancel)
+            if results.placed is not None:  # still swappable: picking one replaces what's in PhotoCraft
+                more.placed = replace(results.placed, index=0 if results.placed.index == index else -1)
             self.events.put(("pick", more))
         self._work(fn, "")
 
@@ -570,7 +835,9 @@ class App:
             result = fn(prompt, self.settings, lambda s: self.events.put(("status", s)),
                         lambda f: self.events.put(("progress", f)), self.cancel)
             if result is not None:
-                self.events.put(("done", (True, f"Done: {result}. (Ctrl+Z in PhotoCraft removes it.)")))
+                hint = "" if result.startswith(("Selected", "Created", "Upscaled")) \
+                    else " (Ctrl+Z in PhotoCraft undoes it.)"
+                self.events.put(("done", (True, f"Done: {result}.{hint}")))
         except UserFacingError as e:
             self.events.put(("done", (False, str(e))))
         except Exception as e:  # never die silently
@@ -589,6 +856,11 @@ class App:
                         self.say("Connected to PhotoCraft and ComfyUI.", OK, hide_after=2500)
                 elif kind == "mode":
                     self.set_mode(value)
+                elif kind == "photocraft":
+                    self.follow_photocraft(value)
+                elif kind == "show":
+                    self.background, self.photocraft_seen, self._photocraft_down = False, False, 0
+                    self.show()
                 elif kind == "theme":
                     self.set_theme(value)
                 elif kind == "progress" and value is not None:
@@ -598,6 +870,24 @@ class App:
                     self.more_btn.set_on(False, badge=True)
                 elif kind == "pick":
                     self.choose(value)
+                elif kind == "tagged":
+                    if value != self.tagged:
+                        self.tagged = value
+                        self._arrange()
+                elif kind == "reopen":
+                    self.choose(value)
+                    self.say("Click another result to swap it in.", None, hide_after=4000)
+                    self._arrange()
+                elif kind == "notice":
+                    self.say(value, BAD, hide_after=7000)
+                elif kind == "placed":
+                    results, gone = value
+                    if gone:
+                        self._forget_results()
+                    elif results.placed is not None:
+                        self.last_results = results
+                    if self.picker is not None and self.picker.results is results:
+                        self.picker.set_waiting(False)
                 elif kind == "done":
                     ok, text = value
                     self.say(text, OK if ok else BAD, hide_after=6000 if ok else None)
@@ -615,31 +905,76 @@ class App:
         self.progress_set(1.0)
         self.say(f"{len(results.images)} results ready: pick one.", OK)
 
-        def picked(i: int) -> None:
-            self.say(f"Placing result {i + 1} in PhotoCraft…", None)
+        def busy() -> None:
+            self.busy = True
+            self.cancel.clear()
+            self._arrange()
             self.progress_busy()
+
+        def picked(i: int) -> None:
+            swapping = results.placed is not None
+            self.say(f"Swapping in result {i + 1}…" if swapping else f"Placing result {i + 1} in PhotoCraft…", None)
+            busy()
             threading.Thread(target=self._place, args=(results, i), daemon=True).start()
 
         def more(i: int) -> None:
+            self.picker = None
             self.say(f"Making more like result {i + 1}…", None)
-            self.progress_busy()
+            busy()
             threading.Thread(target=self._similar, args=(results, i), daemon=True).start()
 
         def discarded() -> None:
+            self.picker = None
             self.say("Discarded. Nothing was added to PhotoCraft.", None, hide_after=4000)
             self.finish()
-        Picker(self.root, results, self.p, self.fonts, picked, discarded,
-               on_similar=more if results.job is not None else None)
+
+        def closed() -> None:
+            self.picker = None
+            self._arrange()  # Other results can bring it back
+        if self.picker is not None:
+            self.picker.dismiss()
+        self.picker = Picker(self.root, results, self.p, self.fonts, picked, discarded,
+                             on_similar=more if results.job is not None else None, on_close=closed)
+
+    def show_other_results(self) -> None:
+        """Bring back the results window to swap the placed result for another one: the selected layer's
+        saved results if it has some (even from long ago), else the last ones placed."""
+        if self.busy:
+            return
+        mine = self.last_results
+
+        def find() -> None:
+            try:
+                found = results_for_layer(self.settings)
+                if mine is not None and mine.saved and mine.saved == found.saved:
+                    found = mine  # the same set still in memory: it can also make "More like this"
+                self.events.put(("reopen", found))
+            except UserFacingError as e:
+                self.events.put(("reopen", mine) if mine is not None else ("notice", str(e)))
+            except Exception as e:  # never die silently
+                self.events.put(("notice", f"Unexpected error: {e!r}"))
+        self.say("Looking for this layer's results…", None)
+        threading.Thread(target=find, daemon=True).start()
+
+    def _forget_results(self) -> None:
+        self.last_results = None
+        if self.picker is not None:
+            self.picker.dismiss()
+            self.picker = None
 
     # -- reference picture -----------------------------------------------------------------------
-    def choose_reference(self) -> None:
+    def choose_reference(self, title: str = "Reference picture") -> bool:
+        """Ask for a reference picture (opening in the last one's folder); True if one was picked."""
+        start = str(Path(self.reference).parent) if self.reference else None
         path = filedialog.askopenfilename(
-            parent=self.root, title="Reference picture",
+            parent=self.root, title=title, initialdir=start,
             filetypes=[("Pictures", "*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff"), ("All files", "*.*")])
-        if path:
-            self.reference = path
-            self._show_reference()
-            self.say(f'Reference: {Path(path).name}. Mention it as "image 2" in the prompt.', None, hide_after=6000)
+        if not path:
+            return False
+        self.reference = path
+        self._show_reference()
+        self.say(f'Reference: {Path(path).name}. Mention it as "image 2" in the prompt.', None, hide_after=6000)
+        return True
 
     def clear_reference(self) -> None:
         self.reference = None
@@ -668,14 +1003,99 @@ class App:
             threading.Thread(target=self.check_connections, daemon=True).start()
         SettingsDialog(self.root, Settings.load(), self.p, self.fonts, saved)
 
+    # -- following PhotoCraft ------------------------------------------------------------------------
+    def follow_photocraft(self, running: bool) -> None:
+        """Show the bar when PhotoCraft opens; hide it when PhotoCraft closes (after it was seen, or when
+        started with Windows). Two failed checks in a row count as closed (one can be a busy moment)."""
+        if running:
+            self._photocraft_down = 0
+            self.photocraft_seen = True
+            if not self.visible and self.settings.follow_photocraft:
+                self.show()
+                threading.Thread(target=self.check_connections, daemon=True).start()
+            return
+        self._photocraft_down += 1
+        if (self.settings.follow_photocraft and self.visible and not self.busy and self._photocraft_down >= 2
+                and (self.photocraft_seen or self.background)):
+            self.hide()
+
+    def show(self) -> None:
+        if self.visible:
+            self.root.lift()
+            return
+        self.visible = True
+        self.root.deiconify()
+        self.root.attributes("-topmost", True)
+        if BORDERLESS:
+            self.root.after(50, lambda: round_corners(self.root))
+
+    def hide(self) -> None:
+        self.visible = False
+        if self.pill is not None:
+            self.pill.hide()
+        self.root.withdraw()
+
+    def _toggle_follow(self) -> None:
+        s = Settings.load()
+        s.follow_photocraft = self.settings.follow_photocraft = not self.settings.follow_photocraft
+        s.save()
+
+    def _toggle_autostart(self) -> None:
+        try:
+            if autostart.enabled():
+                autostart.disable()
+                self.say("It no longer starts with Windows.", None, hide_after=4000)
+            else:
+                autostart.enable()
+                self.say("It now starts with Windows and shows itself when PhotoCraft opens.", OK, hide_after=5000)
+        except Exception as e:  # noqa: BLE001  (PowerShell missing or blocked)
+            self.say(f"Couldn't change the Windows startup setting: {e}", BAD)
+
     def quit(self) -> None:
         self.cancel.set()
         self.root.destroy()
 
 
+INSTANCE_PORT = 47861  # one bar per user: a second start asks the running one to show itself
+
+
+def _first_instance() -> socket.socket | None:
+    """Claim the single-instance port. None if another bar already runs (it was asked to show unless
+    this start is a hidden Windows start)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("127.0.0.1", INSTANCE_PORT))
+        s.listen(2)
+        return s
+    except OSError:
+        s.close()
+        if autostart.BACKGROUND not in sys.argv:
+            try:
+                with socket.create_connection(("127.0.0.1", INSTANCE_PORT), timeout=2) as c:
+                    c.sendall(b"show")
+            except OSError:
+                pass
+        return None
+
+
+def _listen(server: socket.socket, events: queue.Queue) -> None:
+    while True:
+        try:
+            conn, _ = server.accept()
+            with conn:
+                if conn.recv(16).startswith(b"show"):
+                    events.put(("show", None))
+        except OSError:
+            return
+
+
 def main() -> None:
+    server = _first_instance()
+    if server is None:
+        return  # the bar is already running
     root = tk.Tk()
-    App(root)
+    app = App(root, background=autostart.BACKGROUND in sys.argv)
+    threading.Thread(target=_listen, args=(server, app.events), daemon=True).start()
     root.mainloop()
 
 

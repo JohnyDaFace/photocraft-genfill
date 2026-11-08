@@ -1,0 +1,29 @@
+"""Clicking a preset runs it straight away instead of filling the prompt box."""
+from types import SimpleNamespace
+
+from genfill.app import App
+
+
+def _bar(mode="edit"):
+    bar = SimpleNamespace(mode=mode, started=[], said=[])
+    bar.start = lambda job, **kw: bar.started.append((job, kw))
+    bar.say = lambda text, *a, **kw: bar.said.append(text)
+    return bar
+
+
+def test_a_preset_runs_generate_with_its_own_instruction():
+    bar = _bar()
+    App.use_preset(bar, "Restore old photo")
+    assert bar.started == [("fill", {"preset": "Restore old photo"})]
+
+
+def test_a_preset_with_nothing_open_explains_instead_of_creating_a_picture():
+    bar = _bar(mode="empty")
+    App.use_preset(bar, "Restore old photo")
+    assert bar.started == [] and "Open a photo" in bar.said[0]
+
+
+def test_an_unknown_preset_does_nothing():
+    bar = _bar()
+    App.use_preset(bar, "Presets…")
+    assert bar.started == [] and bar.said == []

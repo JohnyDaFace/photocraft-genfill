@@ -21,7 +21,8 @@ def main() -> None:
             "--name", NAME, "--icon", str(icon), "--paths", str(ROOT),
             "--osx-bundle-identifier", "com.photocraftgenfill.app",
             "--exclude-module", "pytest",
-            "--add-data", f"{ROOT / 'assets' / 'icon.png'}{';' if sys.platform == 'win32' else ':'}assets"]
+            "--add-data", f"{ROOT / 'assets' / 'icon.png'}{';' if sys.platform == 'win32' else ':'}assets",
+            "--add-data", f"{ROOT / 'assets' / 'styles'}{';' if sys.platform == 'win32' else ':'}assets/styles"]
     if sys.platform != "darwin":
         args.append("--onefile")  # a .app bundle is already a single thing to download on macOS
     args.append(str(ROOT / "GenFill.pyw"))

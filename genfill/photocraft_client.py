@@ -30,7 +30,11 @@ _COMMON = {
     "select all": ["select.all"],
     "deselect": ["select.deselect"],
     "canvas size": ["image.canvasSize"],
+    "load selection": ["select.loadSelection"],
+    "delete layer": ["layer.delete"],
 }
+# Only needed to swap a placed result for another one (an older PhotoCraft without them just can't swap).
+SWAP_COMMANDS = {"choose layer": "layer.select", "list layers": "layer.list", "layer metadata": "layer.xmpMetadata"}
 REQUIRED_COMMANDS = {
     "headless": {**_COMMON, "rasterize placed layer": ["layer.rasterize.smartObject", "layer.smartObjects.rasterize"]},
     "desktop": {**_COMMON,
@@ -39,6 +43,7 @@ REQUIRED_COMMANDS = {
                 "paste in place": ["edit.pasteSpecial.pasteInPlace"], "close document": ["file.close"]},
 }
 SELECTION_CHANNEL = "genfill-selection"
+SWAP_CHANNEL = "genfill-before-swap"
 
 
 class PhotoCraftError(Exception):
@@ -135,6 +140,8 @@ class PhotoCraftClient:
         return problems
 
     def _cmd(self, step: str) -> str:
+        if step in SWAP_COMMANDS:
+            return SWAP_COMMANDS[step]
         return getattr(self, "_resolved", {}).get(step) or REQUIRED_COMMANDS[self.mode][step][0]
 
     # -- high level ----------------------------------------------------------------------------
@@ -177,11 +184,7 @@ class PhotoCraftClient:
         nothing left selected)."""
         if not masked:
             self.execute(self._cmd("select all"))  # the desktop paste route saves and restores a selection
-        if self.mode == "headless":
-            self.call("doc.place", {"path": rel_path})
-            self.execute(self._cmd("rasterize placed layer"))
-        else:
-            self._paste_in_place(rel_path)
+        self._put(rel_path)
         if masked:
             # Reach a little into the original with a soft edge; the layer's own pixels fade from the
             # exact original to the generated ones inside that band, so no hard line shows.
@@ -198,6 +201,89 @@ class PhotoCraftClient:
         except PhotoCraftError:
             pass  # a name is nice to have; the fill itself is done
 
+    def _put(self, rel_path: str) -> None:
+        """A document-sized PNG as a new pixel layer above the active one."""
+        if self.mode == "headless":
+            self.call("doc.place", {"path": rel_path})
+            self.execute(self._cmd("rasterize placed layer"))
+        else:
+            self._paste_in_place(rel_path)
+
+    def active_layer(self) -> int | None:
+        return self._inspect().get("activeLayer")
+
+    def layer_ids(self) -> set:
+        rows = (self.execute(self._cmd("list layers"), {"flat": True}) or {}).get("layers") or []
+        return {r.get("id") for r in rows}
+
+    def layer_metadata(self, layer: int | None = None) -> str | None:
+        """The layer's XMP packet (None: none, or this PhotoCraft can't store one)."""
+        try:
+            r = self.execute(self._cmd("layer metadata"), {} if layer is None else {"layer": layer}) or {}
+        except PhotoCraftError:
+            return None
+        return r.get("rawData")
+
+    def set_layer_metadata(self, layer: int, packet: str) -> bool:
+        try:
+            self.execute(self._cmd("layer metadata"), {"layer": layer, "rawData": packet})
+            return True
+        except PhotoCraftError:
+            return False
+
+    def replace_layer(self, old: int, rel_path: str, name: str, masked: bool) -> int:
+        """Swap a layer GenFill added for another result, in the same place in the layer stack. A fill
+        keeps the old layer's mask exactly (its selection is loaded back from it). The user's
+        selection is put back afterwards. Returns the new layer's id."""
+        had_selection = bool(self._inspect().get("hasSelection")) and "save selection" in REQUIRED_COMMANDS[self.mode]
+        if had_selection:
+            self.execute(self._cmd("save selection"), {"name": SWAP_CHANNEL})
+        try:
+            self.execute(self._cmd("choose layer"), {"layer": old})
+            if masked:
+                self.execute(self._cmd("load selection"), {"channel": "mask", "layer": old})
+            else:
+                self.execute(self._cmd("select all"))
+            self._put(rel_path)
+            new = self.active_layer()
+            if new is None or new == old:
+                raise PhotoCraftError("PhotoCraft didn't add the new result as expected; the old one is still there.")
+            if masked:
+                self.execute(self._cmd("mask layer to selection"))
+            self.execute(self._cmd("delete layer"), {"layer": old})
+            self.execute(self._cmd("choose layer"), {"layer": new})
+            try:
+                self.execute(self._cmd("rename layer"), {"layer": new, "name": name})
+            except PhotoCraftError:
+                pass
+            return new
+        finally:
+            if had_selection:
+                self.execute(self._cmd("load selection"), {"channel": SWAP_CHANNEL})
+                try:
+                    self.execute(self._cmd("delete channel"), {"channel": SWAP_CHANNEL})
+                except PhotoCraftError:
+                    pass
+            else:
+                try:
+                    self.execute(self._cmd("deselect"))
+                except PhotoCraftError:
+                    pass
+
+    def select_mask(self, rel_path: str) -> None:
+        """Make a picture's transparency the selection: it comes in as a temporary layer (white,
+        alpha = the mask), its transparency is loaded as the selection, and the layer is deleted."""
+        self.place_layer(rel_path, "GenFill selection (temporary)", masked=False)
+        try:
+            self.execute(self._cmd("load selection"), {"channel": "transparency"})
+        finally:
+            self.execute(self._cmd("delete layer"))
+
+    def mask_active_layer(self) -> None:
+        """Hide everything outside the selection on the active layer with a layer mask (Remove
+        Background, as in Photoshop: nothing is deleted; a Background layer becomes a normal layer)."""
+        self.execute(self._cmd("mask layer to selection"))
+
     def _paste_in_place(self, rel_path: str) -> None:
         """Desktop route: open the result as a temporary tab, copy it, close that tab (only if it is
         the one we opened), then paste in place into the original document and restore the selection."""
@@ -210,6 +296,9 @@ class PhotoCraftClient:
             self.execute(self._cmd("select all"))
             self._clipboard_retry(lambda: self.execute(self._cmd("copy")))
             self.execute(self._cmd("close document"), {"save": "discard"})
+            if self._identity() != target:
+                # With several documents open, closing the temporary tab can land on another one: go back.
+                self._activate(target)
             if self._identity() != target:
                 raise PhotoCraftError("PhotoCraft switched to another document; the result is in the exchange "
                                       "folder but was not pasted.")
@@ -240,6 +329,21 @@ class PhotoCraftClient:
     def _identity(self) -> tuple:
         r = self._inspect()
         return r.get("name"), r.get("path")
+
+    def _activate(self, identity: tuple, max_tabs: int = 200) -> None:
+        """Bring the open document with this (name, path) to the front, if PhotoCraft can (best effort:
+        the caller checks the result)."""
+        for i in range(max_tabs):
+            try:
+                r = self.execute(self._cmd("read document"), {"document": i}) or {}
+            except PhotoCraftError:
+                return  # past the last tab
+            if (r.get("name"), r.get("path")) == identity:
+                try:
+                    self.execute("document.activate", {"document": i})
+                except PhotoCraftError:
+                    pass
+                return
 
     def open_document(self, rel_path: str) -> None:
         self.call("doc.open" if self.mode == "headless" else "app.open", {"path": rel_path})

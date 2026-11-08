@@ -17,6 +17,108 @@ def working_size(w: int, h: int, megapixels: float = 1.0) -> tuple[int, int]:
     return max(16, int(round(w * scale / 16)) * 16), max(16, int(round(h * scale / 16)) * 16)
 
 
+CROP_CONTEXT = 0.5      # around a selection, this much of its size is shown to the model on each side…
+CROP_MIN_CONTEXT = 96   # …but at least this many pixels
+CROP_MIN_SIDE = 512     # crops smaller than this get more surroundings
+CROP_MAX_ZOOM = 4.0     # a tiny crop is generated at most this much larger than it is
+CROP_WORTH = 0.6        # crop only when it is at most this fraction of the picture (else no gain)
+
+
+def fill_crop(size: tuple[int, int], mask: Image.Image, megapixels: float = 1.0) -> Bounds | None:
+    """The part of the picture to generate a fill in: the mask's area plus surroundings for context.
+    None when that's most of the picture anyway, or the picture is no bigger than the working size
+    (then the whole picture is used, as before)."""
+    w, h = size
+    box = mask.point(lambda v: 255 if v > 0 else 0).getbbox()
+    if not box or w * h <= megapixels * 1_000_000:
+        return None
+    x0, y0, x1, y1 = box
+    mx = max(CROP_MIN_CONTEXT, round((x1 - x0) * CROP_CONTEXT))
+    my = max(CROP_MIN_CONTEXT, round((y1 - y0) * CROP_CONTEXT))
+    b = [x0 - mx, y0 - my, x1 + mx, y1 + my]
+    for lo, hi, n in ((0, 2, w), (1, 3, h)):  # small crops get more surroundings, then stay inside
+        short = min(CROP_MIN_SIDE, n) - (b[hi] - b[lo])
+        if short > 0:
+            b[lo] -= short // 2
+            b[hi] += short - short // 2
+        if b[lo] < 0:
+            b[lo], b[hi] = 0, b[hi] - b[lo]
+        if b[hi] > n:
+            b[lo], b[hi] = max(0, b[lo] - (b[hi] - n)), n
+    x0, y0, x1, y1 = b
+    if (x1 - x0) * (y1 - y0) > CROP_WORTH * w * h:
+        return None
+    return x0, y0, x1, y1
+
+
+def shapes(mask: Image.Image, side: int = 512, min_pixels: int = 12) -> list[Bounds]:
+    """Bounding boxes (full size) of the separate shapes in a mask, largest first; each face SAM found
+    is one shape. Works on a copy at most `side` px; shapes smaller than `min_pixels` there are noise."""
+    from collections import deque
+    full = mask.convert("L")
+    scale = min(1.0, side / max(full.size))
+    small = full.resize((max(1, round(full.width * scale)), max(1, round(full.height * scale))), Image.BILINEAR)
+    fg = np.asarray(small) > 127
+    seen = np.zeros_like(fg)
+    h, w = fg.shape
+    found = []
+    for y, x in zip(*np.nonzero(fg)):
+        if seen[y, x]:
+            continue
+        seen[y, x] = True
+        queue, n = deque([(y, x)]), 0
+        x0, y0, x1, y1 = x, y, x, y
+        while queue:
+            cy, cx = queue.popleft()
+            n += 1
+            x0, y0, x1, y1 = min(x0, cx), min(y0, cy), max(x1, cx), max(y1, cy)
+            for ny, nx in ((cy - 1, cx), (cy + 1, cx), (cy, cx - 1), (cy, cx + 1)):
+                if 0 <= ny < h and 0 <= nx < w and fg[ny, nx] and not seen[ny, nx]:
+                    seen[ny, nx] = True
+                    queue.append((ny, nx))
+        if n >= min_pixels:
+            found.append((n, (int(x0 / scale), int(y0 / scale),
+                              min(full.width, int((x1 + 1) / scale + 1)), min(full.height, int((y1 + 1) / scale + 1)))))
+    return [b for _, b in sorted(found, key=lambda t: -t[0])]
+
+
+def around(box: Bounds, size: tuple[int, int], context: float, min_side: int) -> Bounds:
+    """`box` grown by `context` × its size on each side, at least `min_side` wide and high, kept inside."""
+    w, h = size
+    x0, y0, x1, y1 = box
+    mx, my = round((x1 - x0) * context), round((y1 - y0) * context)
+    b = [x0 - mx, y0 - my, x1 + mx, y1 + my]
+    for lo, hi, n in ((0, 2, w), (1, 3, h)):
+        short = min(min_side, n) - (b[hi] - b[lo])
+        if short > 0:
+            b[lo] -= short // 2
+            b[hi] += short - short // 2
+        if b[lo] < 0:
+            b[lo], b[hi] = 0, b[hi] - b[lo]
+        if b[hi] > n:
+            b[lo], b[hi] = max(0, b[lo] - (b[hi] - n)), n
+    return b[0], b[1], b[2], b[3]
+
+
+def transfer_look(original: Image.Image, looked: Image.Image, radius: float | None = None) -> Image.Image:
+    """The original's fine detail with the light and colour of `looked` (a small redrawn copy):
+    original + blur(looked) - blur(original)."""
+    size = original.size
+    radius = radius or max(6.0, max(size) / 48)  # coarse: light and colour, not shapes
+    o = original.convert("RGB")
+    lk = looked.convert("RGB").resize(size, Image.LANCZOS)
+    ob = np.asarray(o.filter(ImageFilter.GaussianBlur(radius))).astype(np.float32)
+    lb = np.asarray(lk.filter(ImageFilter.GaussianBlur(radius))).astype(np.float32)
+    out = np.asarray(o).astype(np.float32) + lb - ob
+    return Image.fromarray(np.clip(out + 0.5, 0, 255).astype(np.uint8), "RGB")
+
+
+def crop_working_size(w: int, h: int, megapixels: float = 1.0) -> tuple[int, int]:
+    """Size to generate a crop at: about `megapixels`, enlarged at most CROP_MAX_ZOOM times."""
+    scale = min(CROP_MAX_ZOOM, math.sqrt(megapixels * 1_000_000 / max(1, w * h)))
+    return max(16, int(round(w * scale / 16)) * 16), max(16, int(round(h * scale / 16)) * 16)
+
+
 def _clip(bounds: Bounds, w: int, h: int) -> Bounds:
     x0, y0, x1, y1 = bounds
     return max(0, x0), max(0, y0), min(w, x1), min(h, y1)
@@ -42,6 +144,51 @@ def fill_mask(rgba: Image.Image, selection: Bounds, grow: int = 24, feather: int
         clipped = np.zeros((h, w), np.uint8)
         clipped[y0:y1, x0:x1] = np.asarray(img)[y0:y1, x0:x1]
         img = Image.fromarray(clipped, "L")
+    if feather > 0:
+        img = img.filter(ImageFilter.GaussianBlur(feather / 2))
+    return img
+
+
+def fill_small_holes(mask: Image.Image, max_fraction: float = 0.02, side: int = 512) -> Image.Image:
+    """Close small enclosed holes in a found shape (a reflection in a cup's coffee that the detector
+    left out). Holes bigger than `max_fraction` of the shape stay open: the gap between an arm and a
+    body is real background. Works on a copy at most `side` px for speed."""
+    from PIL import ImageDraw
+    full = mask.convert("L").point(lambda v: 255 if v > 127 else 0)
+    scale = min(1.0, side / max(full.size))
+    small = full.resize((max(1, round(full.width * scale)), max(1, round(full.height * scale))), Image.NEAREST)
+    area = int((np.asarray(small) > 0).sum())
+    if not area:
+        return full
+    work = Image.new("L", (small.width + 2, small.height + 2), 0)  # a frame so the outside is one region
+    work.paste(small, (1, 1))
+    ImageDraw.floodfill(work, (0, 0), 1)
+    arr = np.asarray(work).copy()
+    fill = np.zeros_like(arr, dtype=bool)
+    mark = 2
+    while True:
+        ys, xs = np.nonzero(arr == 0)
+        if not len(ys) or mark > 250:
+            break
+        img = Image.fromarray(arr).copy()  # fromarray images are read-only for floodfill
+        ImageDraw.floodfill(img, (int(xs[0]), int(ys[0])), mark)
+        arr = np.asarray(img).copy()
+        hole = arr == mark
+        if hole.sum() <= max_fraction * area:
+            fill |= hole
+        mark += 1
+    if not fill.any():
+        return full
+    holes = Image.fromarray((fill[1:-1, 1:-1] * 255).astype(np.uint8), "L").resize(full.size, Image.BILINEAR)
+    return Image.fromarray(np.maximum(np.asarray(full), np.asarray(holes.point(lambda v: 255 if v > 127 else 0))), "L")
+
+
+def grow_mask(mask: Image.Image, grow: int = 24, feather: int = 16) -> Image.Image:
+    """An exact shape (a found object) turned into a generation mask: pushed `grow` pixels outward so
+    the fill covers the object's edge and shadow fringe, then softened."""
+    img = mask.convert("L").point(lambda v: 255 if v > 127 else 0)
+    if grow > 0:
+        img = img.filter(ImageFilter.BoxBlur(grow)).point(lambda v: 255 if v > 0 else 0)
     if feather > 0:
         img = img.filter(ImageFilter.GaussianBlur(feather / 2))
     return img

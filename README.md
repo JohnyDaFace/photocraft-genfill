@@ -4,7 +4,7 @@ A small always-on-top bar that adds AI tools to [PhotoCraft](https://github.com/
 running entirely on your own computer through [ComfyUI](https://github.com/comfyanonymous/ComfyUI) and
 FLUX.2 [klein]:
 
-![The bar: something selected, nothing selected, and while it works](docs/showcase/bar.png)
+![The bar: something selected, nothing selected, no document open, and while it works](docs/showcase/bar.png)
 
 - **Generate** fills a selected area, like Photoshop's Generative Fill / Generative Expand. Enlarge the canvas
   (say 1080×1350 → 1080×1920), select the empty part, click Generate. The result arrives as a **new masked
@@ -15,9 +15,18 @@ FLUX.2 [klein]:
   Background blur, Relight, and portrait tweaks, one click each.
 - **More like this** (Generate Similar): new versions close to a result you almost like.
 - **Remove** takes away whatever is in the selection and fills in the background behind it.
+- **Select ▾** (with SAM 3) finds things by name: type "dog" or "boat" and it selects them, or pick Sky or
+  People. The same menu can **remove** what you typed, all people or all cars in one go, and **remove the
+  background** around what you typed (a layer mask, nothing deleted).
+- **Fix faces** (in Select ▾) finds every face and restores it up close, sharper but the same person.
+  **Replace face** gives one face the face of the person in another photo, keeping the expression and pose.
 - **Reference picture**: give Generate a second image to take an object or a style from.
 - **Edit** (Generate with nothing selected) changes the whole image as you describe it: "make it night",
   "change the jacket to red", "turn it into a watercolour". Everything you don't mention stays the same.
+- **Create ▾** makes a new picture from just the prompt (text to image, 1:1, 4:5, 16:9…) and opens it as a new
+  document. With no document open, the bar offers only this: pick the shape, type, click **Create**.
+- **Enhance** (in Upscale ▾) gives back the same picture at the same size, crisper and better lit, like a
+  professional camera shot, as a layer you can fade or mask.
 - **Upscale** (2× or 4×) redraws the whole image larger with new detail and opens it as a new document.
 
 Nothing is uploaded anywhere: the bar talks only to PhotoCraft and ComfyUI on your own machine. The one
@@ -44,11 +53,24 @@ made with the same model, so no real photos are involved.
 
 ![Expand: a 4:5 photo widened to 16:9](docs/showcase/expand.jpg)
 
-**Presets**: nothing selected, *Colorize black & white* and *Sky: golden sunset*, then Generate.
+**Presets**: nothing selected, *Colorize black & white*, then *Sky: golden sunset*.
 
 ![Colorize: an old black and white harbour photo in colour](docs/showcase/colorize.jpg)
 
 ![Sky replacement: a golden sunset over the lake, reflected in the water](docs/showcase/sky.jpg)
+
+**Select ▾**: type *sky* (left) or *boat* (right) and pick it under Select. The tint shows what got selected.
+
+![Select by name: the sky over the lake, and the boats in the harbour](docs/showcase/select.jpg)
+
+**Remove background**: type *coffee cup*, Select ▾ › Remove background, keep “coffee cup”.
+
+![Remove background: a coffee cup cut out, the rest hidden by a layer mask](docs/showcase/remove-background.jpg)
+
+**Create ▾**: type *a red lighthouse on a rocky coast at dusk, waves, film photo*, Create ▾ › 3:2. Two of the
+results to choose from; the one you pick opens as a new document.
+
+![Create: two lighthouse pictures made from the prompt alone](docs/showcase/create.jpg)
 
 Not every try is a hit: that's why Generate makes several versions (3 by default) to pick from.
 
@@ -69,6 +91,34 @@ Not every try is a hit: that's why Generate makes several versions (3 by default
 | `flux-2-klein-9b-fp8.safetensors` | `diffusion_models/` | [black-forest-labs/FLUX.2-klein-9b-fp8](https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8) (log in and accept the licence first) |
 | `qwen_3_8b_fp8mixed.safetensors` | `text_encoders/` | [Comfy-Org/flux2-klein-9B](https://huggingface.co/Comfy-Org/flux2-klein-9B/blob/main/split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors) |
 | `flux2-vae.safetensors` | `vae/` | [Comfy-Org/flux2-dev](https://huggingface.co/Comfy-Org/flux2-dev/blob/main/split_files/vae/flux2-vae.safetensors) |
+
+For **Select ▾** (optional; everything else works without it):
+
+| File | Put it in `ComfyUI/models/…` | Download |
+|---|---|---|
+| `sam3.1_multiplex_fp16.safetensors` | `checkpoints/` | [Comfy-Org/sam3.1](https://huggingface.co/Comfy-Org/sam3.1/blob/main/checkpoints/sam3.1_multiplex_fp16.safetensors) (about 1.7 GB; needs a ComfyUI recent enough to have the *SAM3 Detect* node) |
+
+For a **sharp Upscale** (recommended). Best is SeedVR2, a model made for restoring and enlarging photos; it
+needs a ComfyUI recent enough to have the *SeedVR2* nodes:
+
+| File | Put it in `ComfyUI/models/…` | Download |
+|---|---|---|
+| `seedvr2_7b_int8_convrot.safetensors` | `diffusion_models/` | [Comfy-Org/SeedVR2](https://huggingface.co/Comfy-Org/SeedVR2/blob/main/diffusion_models/seedvr2_7b_int8_convrot.safetensors) (8.3 GB) |
+| `seedvr2_ema_vae_fp16.safetensors` | `vae/` | [Comfy-Org/SeedVR2](https://huggingface.co/Comfy-Org/SeedVR2/blob/main/vae/seedvr2_ema_vae_fp16.safetensors) (0.5 GB) |
+
+Without SeedVR2, Upscale uses this smaller model with FLUX (good, a little less natural); with neither, it is
+barely sharper than a plain resize:
+
+| File | Put it in `ComfyUI/models/…` | Download |
+|---|---|---|
+| `4x-UltraSharp.pth` | `upscale_models/` | [Kim2091/UltraSharp](https://huggingface.co/Kim2091/UltraSharp/blob/main/4x-UltraSharp.pth) (67 MB) |
+
+For a convincing **Replace face** (recommended), the BFS head-swap LoRA. Without it, Replace face only borrows
+the other person's features and often still looks like the old face:
+
+| File | Put it in `ComfyUI/models/…` | Download |
+|---|---|---|
+| `bfs_head_v1_flux-klein_9b_step3750_rank64.safetensors` | `loras/` | [Alissonerdx/BFS-Best-Face-Swap](https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/main/bfs_head_v1_flux-klein_9b_step3750_rank64.safetensors) (0.3 GB) |
 
 Restart ComfyUI after adding them. If your files have other names (for example a bf16 version), pick them in
 **⋯ › Settings…**; the bar tells you at startup if a file is missing and where it goes.
@@ -107,10 +157,12 @@ Download the file for your computer from the **Releases** page of this repositor
 The app is a small floating bar, like Photoshop's contextual task bar. It follows what you do in PhotoCraft:
 
 - **Something selected:** prompt, **Remove** and **Generate** (fills the selection).
-- **Nothing selected:** prompt, **Expand ▾**, **Upscale ▾** and **Generate** (changes the whole image).
+- **Nothing selected:** prompt, **Select ▾**, **Expand ▾**, **Upscale ▾**, **Create ▾** and **Generate** (changes the whole image).
+- **No document open:** prompt, the shape of the new picture (for example **1:1 ▾**) and **Create** (or press
+  Enter).
 
-Next to the prompt: **Presets** (sliders icon), **Reference picture** (picture icon; a dot means one is set) and
-the **results count** (how many versions to choose from). Drag the dots at the left end to move the bar; it
+The prompt is on top, the buttons under it. At the left of the buttons: **Presets** (sliders icon), **Reference picture** (picture icon; a dot means one is set) and
+the **results count** (how many versions to choose from). Drag the dots left of the prompt to move the bar; it
 remembers where you put it. Messages appear in a small pill under the bar (click it to hide it). While it works,
 a thin line along the bottom shows progress and **Generate** turns into **Cancel** (or press Esc). The **⋯** menu
 has Settings, the PhotoCraft connection, the version and Quit.
@@ -119,7 +171,7 @@ has Settings, the PhotoCraft connection, the version and Quit.
 1. In PhotoCraft: select what to fill: the empty area after Image › Canvas Size, or something to replace or
    remove (hold Shift to add more areas).
 2. In the bar: optionally type what should appear ("remove it" works for taking things away), choose how many
-   results you want (1–4, the stacked-squares button), then click **Generate** (about 15–30 seconds per result).
+   results you want (1–4, the stacked-squares button), then click **Generate** (about 20–40 seconds per result on a 10 GB card).
 3. With more than one result, a **Choose a result** window shows them side by side: click the one you like (or
    press 1–4). **Discard all** adds nothing. With 1 result it goes straight in.
 4. A new layer "Generative Fill" appears with a soft mask. Paint on the mask to adjust, or Undo to remove it.
@@ -134,11 +186,61 @@ The prompt box remembers your last 15 prompts: click the clock icon inside it to
 "in the style of image 2" (with nothing selected, that restyles the whole picture). Click the icon again to choose another or stop using it. Remove
 ignores the reference. Like any fill, not every try picks it up, so ask for 3 results.
 
+**Changed your mind?** The *Choose a result* window stays open after you pick one, like Photoshop's variations:
+the one in PhotoCraft is marked *In PhotoCraft*, and clicking another one swaps it in. The same layer is replaced, in
+the same place, and a fill keeps exactly the same mask. *Done* keeps the one in PhotoCraft. If you closed the
+window too soon, **Other results** on the bar brings it back until you start something new. It won't swap if
+you deleted the layer or switched to another document, and it says so. A created picture opens the other
+result as another new document.
+
+**Even days later.** GenFill keeps every set of results you placed one from (the last 50 sets, in the `results`
+folder of GenFill's data folder, `%LOCALAPPDATA%\PhotoCraftGenFill` on Windows), and marks the layer it added (in the layer's metadata, which is saved with the
+document as PSD). Select that layer in PhotoCraft's Layers panel any time, even after restarting
+everything, and **Other results** appears on the bar: it opens that set again so you can swap. Reopened sets
+can't make *More like this*. Change how many sets are kept with `keep_results` in the settings file.
+
 **More like this**: in the *Choose a result* window, click *More like this* under a result. You get new
 versions that keep its layout and vary the details; the one you picked stays as choice 1.
 
-**Presets**: the sliders icon next to the prompt opens a menu that fills in a ready-made instruction, which you can still
-edit before clicking Generate. With nothing selected they work on the whole image; with a selection, only there.
+**Style**: the palette icon next to the prompt opens thumbnails of each look, in tabs:
+
+- **Photo**: Professional photo, Film photo, Cinematic, Movie poster, Golden hour, Low-key, Black & white
+  film, Instant photo, 2000s digital, Fashion editorial, Interior bright (a real-estate look for room photos).
+- **Portrait**: close-up head-and-shoulders looks, each a classic lighting setup: Editorial, Corporate headshot,
+  Actor headshot, Rembrandt light, Beauty light, Split light, Rim light, Window light, Colour gels, B&W portrait,
+  Colour backdrop. Good for turning a phone selfie into a studio portrait.
+- **Product**: Studio white, Hero shot, Flat lay, Lifestyle, Luxury, Podium, Splash, Nature, and for food, Food
+  overhead and Food dark & moody. Each brings its own angle and set, from an online-shop white background to a
+  low-angle hero shot or a top-down flat lay.
+  With a model: Model studio, Model close-up, In hand, Model lifestyle, Model outdoors put a woman holding
+  your product in different poses, from beside her face in the studio to a sunny street.
+- **Art**: Anime, Japanese ink, Watercolour, Oil painting, Pencil sketch, Comic book, 3D animation, Fantasy art,
+  Neon cyberpunk, Toy figure, Claymation, Pixel art, Stained glass, Retro 80s, Surreal.
+- **Eras**: Victorian, 1920s, 1950s, 1970s, Future: the clothes, the setting and the photography of the time.
+
+- **Angles**: Low angle, High angle, Bird's-eye, Worm's-eye, Dutch tilt, Close-up, Side profile, From behind,
+  Wide shot, Fisheye, Drone aerial. An angle is chosen on its own and **adds to the style**: the bar shows both,
+  for example *Cinematic · Low angle*. On a photo with nothing typed it shows the same people and place from the
+  new angle (with Studio white the bottle turns, it doesn't become a straight top-down shot).
+
+Click one and it stays on, with its name on the bar, until you click it again or pick *Off*; *Clear all* at the
+bottom of the panel turns off the style and the angle together. A style describes the look in words and
+is put before your prompt, for **Create** and **whole-image edits**. With a style on, click **Generate** on a photo
+with nothing typed and it just turns the photo into that style: Photo and Art styles keep the people and the
+framing; Portrait styles keep the same face, eye colour, skin tone and expression and change the light and backdrop (Corporate headshot also puts on smart clothes); Product styles keep the product itself (shape, colours, label) and give it a new set, angle and light, so a
+quick phone photo of something you sell becomes a studio shot; the model styles keep the product the same and add a woman holding it; the food styles keep the dish, Interior bright keeps
+the room and its furniture, and the Eras keep the people's faces and poses while their clothes change. Small text on labels sometimes comes out garbled:
+make a few results and pick a clean one. Fills, presets, Remove and the face tools don't use styles, because they
+have to match the photo.
+
+*Edit styles…* opens `styles.json` (next to the settings file) for your own styles: add one with a name and a
+sentence or two describing the look, use a built-in style's name to change its words, or list names under
+`hidden` to leave them out. The built-in styles themselves come with the app, so updates can improve them. A
+new or changed style gets its thumbnail made the next time the panel opens (ComfyUI must be running).
+
+**Presets**: the sliders icon next to the prompt opens a menu of ready-made edits; clicking one runs it straight away
+(what's typed in the prompt box is left alone). With nothing selected they work on the whole image; with a selection,
+only there.
 
 | Preset | Use it for |
 |---|---|
@@ -154,7 +256,7 @@ so the result can't land in the wrong place.
 
 **Edit (whole image)**: deselect everything (Select › Deselect), type the change ("make it night, moonlight",
 "change the car to red"), click **Generate**. The edited image arrives as a new layer named "Edit" above your
-original, so you can lower its opacity, mask parts of it, or delete it. Edits are made at about 1 megapixel and
+original, so you can lower its opacity, mask parts of it, or delete it. Edits are made at about 2 megapixels and
 scaled to your image's size, so on large photos they are softer than the original; use **Upscale** afterwards or
 mask the edit to where it matters. To change just one part, select it and use Generate with a prompt instead.
 
@@ -165,9 +267,67 @@ from Generate). Your document is enlarged only when you pick a result; the fille
 select the empty part and use Generate.
 
 **Upscale**: with nothing selected, click **Upscale ▾** and pick 2× or 4×. The bigger image opens as a new document; the original is
-untouched.
+untouched. With SeedVR2 installed (see the model tables above) it restores real detail, fine lines and texture in
+one step, a few seconds per piece; it follows the picture, not the prompt. Without it, 4x-UltraSharp enlarges the
+picture and FLUX lightly redraws it; without either, the enlarging is a plain resize and the result stays soft.
+**⋯** shows which one Upscale uses. In the settings file, `seedvr_model` ("" turns SeedVR2 off), `seedvr_tile`
+(piece size, 2048; lower it if your GPU runs out of memory) and `upscale_model` change this.
 
-The bar follows PhotoCraft's theme automatically.
+**Create ▾**: type a description of the picture you want ("a red lighthouse on a rocky coast at dusk, film
+photo"), click **Create ▾** and pick a shape (1:1, 4:5, 3:2, 16:9, 9:16, 2:3; the menu shows the size: at least Full
+HD, so 16:9 is 1920×1080). You choose from the results as with Generate, *More like this* works too, and the one you pick opens
+as a new document; your open pictures are not touched. Describe it like a photo caption: subject, place, light,
+style ("film photo", "watercolour", "studio product shot"). With a **reference picture** set you can say
+"the chair from image 2 in a sunny loft". For print sizes, use **Upscale** on the result.
+
+**Enhance**: with nothing selected, **Upscale ▾ › Enhance: crisper, better light**. It works in two passes:
+first it finds better light and colour (only those are kept, so nothing in the picture changes), then it
+redraws the detail lightly while following your picture closely, at full size on big photos. People, objects
+and framing stay the same. It arrives as a layer "Enhance" above your picture: lower its opacity to taste.
+Typing in the prompt steers the light ("golden hour light", "moody, low key"). You get up to two results to
+choose from. How far the light and colour may change is `enhance_strength` in the settings file (0.35).
+
+**Select ▾** (needs the SAM 3 model above): with nothing selected, type what you're after in the prompt box
+("dog", "boat", "red car"), then open **Select ▾**:
+
+- **Select “dog”** selects every dog it finds; **Sky** and **People** work without typing.
+- **Remove “dog”**, **People** or **Cars** finds them, selects them and fills them away like Remove (you choose
+  from the results as usual). Only the found shapes are redrawn, not a box around them.
+- **Remove background, keep “dog”** puts a layer mask on the active layer that hides everything else. Nothing is
+  deleted: paint on the mask to fix edges, or delete the mask to undo it. A Background layer becomes "Layer 0".
+
+- **Fix faces** finds every face and restores each one up close at high resolution: sharper eyes, lashes, skin
+  and hair, and still the same person. With SeedVR2 installed (the Upscale model, see the model tables) it uses
+  that, which keeps people most like themselves; otherwise FLUX partly redraws each face. They arrive as one
+  layer holding just the faces with soft edges: lower its opacity or erase a face you'd rather keep. It ignores
+  the prompt box. To change faces, type a wish ("smiling", "eyes open") and pick **Fix faces: “smiling”**
+  instead: FLUX redraws the faces to match, so they change more.
+- **Replace face with a photo…** puts the person in that photo in place of one person in your picture. It
+  changes the face inside your selection (draw a rough box around it), or the biggest face when nothing is
+  selected. It asks for the photo every time, so a different person gets their own; to use the same photo
+  again, pick **Replace face with *name*.jpg**.
+  - **With the BFS LoRA** (see the model tables; ⋯ shows whether Replace face has it),
+    the whole head is swapped, hair included: the head angle, expression and light come from your picture, the
+    face and hair from the photo. Only the photo's head is used, so its clothes and background never come
+    along; the clothes, body and background around the head stay yours. Your own LoRAs are left out for this.
+  - **Without it**, only the face changes and your picture's hair stays. It works best when the photo matches
+    your picture (turned the same way, a similar expression); otherwise it mostly keeps the old face. With a
+    photo of the same person it works as a restore: a blurry face comes back sharp and clearly them.
+
+  Strong backlight is its weak spot: the new face can come out lit from the front. `face_swap_lora` in the
+  settings file names the LoRA ("" uses the face-only way).
+
+How strongly FLUX redraws faces for Fix faces is set in the settings file (`face_strength`, 0.5). Higher is
+sharper but less like before.
+
+Tips: short, plain nouns work best ("person", "car", "bench"). Name the whole thing: "coffee cup" keeps the
+coffee, "cup" may leave a hole where it is. It finds every match; to get just one, add `:1` ("bench:1" picks the
+clearest bench). Several things at once: separate them with commas ("dog, ball").
+
+The bar follows PhotoCraft's theme automatically. It also follows PhotoCraft itself: when you close PhotoCraft the
+bar hides, and it shows again when PhotoCraft opens (turn this off with **⋯ › Hide while PhotoCraft is closed**).
+On Windows, **⋯ › Start with Windows** starts the bar hidden when you log in, so it appears by itself whenever you
+open PhotoCraft. Starting the bar by hand always shows it.
 
 ## Settings
 
@@ -194,7 +354,9 @@ shows the version you have.
 | Can't reach PhotoCraft | PhotoCraft isn't running, wasn't fully restarted after Setup, or Preferences › Integrations › Allow Agent Control is off. |
 | ComfyUI is not running | Start ComfyUI, or fix the address in Settings. |
 | Model file missing | Download it into the folder shown, restart ComfyUI. |
-| Out of memory | Lower *megapixels* in the settings file, close other GPU programs. |
+| Couldn't find … in the picture | Use a simpler word ("person" instead of "the man in the hat"). |
+| Select (SAM 3): model missing | Download the SAM 3 file into `ComfyUI/models/checkpoints/`, restart ComfyUI. If it says ComfyUI is too old, update ComfyUI. |
+| Out of memory, or too slow | Lower *megapixels* in the settings file (default 2.0; 1.0 is about twice as fast but softer), close other GPU programs. Created pictures stay at least Full HD. |
 
 Settings are stored in `%APPDATA%\PhotoCraftGenFill` (Windows), `~/Library/Application Support/PhotoCraftGenFill`
 (Mac) or `~/.config/photocraft-genfill` (Linux).
@@ -203,9 +365,11 @@ Settings are stored in `%APPDATA%\PhotoCraftGenFill` (Windows), `~/Library/Appli
 
 The window uses PhotoCraft's built-in local control channel. For Generate it exports a PNG copy of your image
 (your document keeps its name), sends it to ComfyUI with a mask of the selected area, colour-matches the result to
-the original so there is no visible seam, and brings it back as a new layer, pasted in place, with a layer mask from
+the original so there is no visible seam (in a big photo it sends only the selection plus its surroundings,
+enlarged, so the fill comes back as sharp as the photo), and brings it back as a new layer, pasted in place, with a layer mask from
 your selection. It briefly uses the clipboard for that and waits if another program holds it. Upscale works in
-overlapping tiles so large images fit in GPU memory.
+overlapping tiles so large images fit in GPU memory: each piece is restored by SeedVR2 (or enlarged by the
+upscale model and lightly redrawn by FLUX) inside ComfyUI, and the pieces are blended back together.
 
 PhotoCraft's own *Filter › Plug-ins* can't host this: those plug-ins are sandboxed WebAssembly filters without
 network access, prompts or new layers. That's why this is a separate window.

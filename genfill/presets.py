@@ -1,5 +1,5 @@
-"""Ready-made instructions for Generate, like Photoshop's Neural Filters. Picking one fills the prompt
-box (it can still be edited). With a selection they work on that area; without one, on the whole image."""
+"""Ready-made instructions for Generate, like Photoshop's Neural Filters. Picking one runs it straight
+away. With a selection they work on that area; without one, on the whole image."""
 from __future__ import annotations
 
 KEEP = " Keep everything else exactly the same: same people, objects, composition and framing."
