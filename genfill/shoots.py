@@ -48,7 +48,7 @@ PRODUCT_SHOTS: tuple[Shot, ...] = (
     Shot("wide set", "wide shot showing the whole set around the product, the product smaller in the frame, "
                      "label facing the camera"),
     Shot("detail macro", "macro detail of the cap and the top of the product, shallow depth of field, "
-                         "label edge in focus"),
+                         "label facing the camera, label edge in focus"),
     Shot("in hand", "the product held in an elegant hand at chest height, label facing the camera, the face "
                     "out of frame"),
     Shot("lifestyle props", "the product at eye level surrounded by a few props that suit it, placed beside "
