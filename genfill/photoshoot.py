@@ -110,25 +110,25 @@ def run_photoshoot(shoot_name: str, photo_path: str | Path, settings: Settings, 
             else:
                 prompt, refs = shoots.follow_prompt(shoot.kind, text), [subject_name, hero_name]
             image, error = None, None
-            for _attempt in range(2):
+            for _attempt in range(2):  # one retry; a cancel is never retried
                 try:
                     image = _make(comfy, settings, prompt, refs, size, cancel)
+                    if i == 1:
+                        hero_name = comfy.upload(image.resize(imaging.working_size(*size, settings.megapixels),
+                                                              Image.LANCZOS), "genfill_shoot_hero.png")
                     break
-                except ComfyError as e:
-                    error = e
+                except Exception as e:  # whatever goes wrong with one shot must not lose the finished ones
+                    image, error = None, e
                     if cancel.is_set():
                         break
-            if image is None and not cancel.is_set():
-                if i == 1:
-                    raise UserFacingError(f"The first shot failed: {error}") from error
-                skipped.append(str(i))
-                continue
-            if image is None:
+            if image is not None:
+                images[i] = image
+            elif cancel.is_set():
                 break
-            images[i] = image
-            if i == 1:
-                hero_name = comfy.upload(image.resize(imaging.working_size(*size, settings.megapixels),
-                                                      Image.LANCZOS), "genfill_shoot_hero.png")
+            elif i == 1:
+                raise UserFacingError(f"The first shot failed: {error}") from error
+            else:
+                skipped.append(str(i))
         if not images:
             raise UserFacingError("Cancelled.")
         run = shoot_store.ShootRun(shoot.name, shoot.kind, shoot.set, planned, settings.create_choice, size,

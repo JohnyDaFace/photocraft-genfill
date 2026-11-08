@@ -24,7 +24,7 @@ TAG_RE = re.compile(r'genfill:shoot="([0-9a-f]{8,32})"\s+genfill:shot="(\d+)"')
 @dataclass
 class ShootRun:
     shoot: str                        # the shoot's name
-    kind: str                         # "product" or "person"
+    kind: str                         # "product" or "people"
     set_text: str                     # the set / look the shoot was made with
     shots: list[tuple[str, str]]      # (shot name, shot description), in layer order
     shape: str                        # a Create shape, e.g. "1:1"

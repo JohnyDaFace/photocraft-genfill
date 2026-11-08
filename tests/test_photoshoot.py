@@ -3,12 +3,17 @@ import threading
 import pytest
 from PIL import Image
 
-from genfill import shoot_store
+from genfill import shoot_store, shoots
 from genfill.comfy import ComfyError
 from genfill.photoshoot import run_photoshoot
 from genfill.pipeline import UserFacingError, create_size
 from genfill.settings import Settings
 from test_pipeline import FakeComfy, FakePC, _doc
+
+
+@pytest.fixture(autouse=True)
+def _builtin_shoots_only(tmp_path, monkeypatch):
+    monkeypatch.setattr(shoots, "SHOOTS_FILE", tmp_path / "no_shoots.json")
 
 
 class ShootComfy(FakeComfy):
@@ -123,6 +128,17 @@ def test_a_failing_shot_is_retried_once_then_skipped(tmp_path):
     pc = ShootPC(_doc(), None, tmp_path); msg = _shoot(tmp_path, comfy, pc)
     assert len(pc.placed) == 6 and "Shots 3 failed" in msg
     assert 3 not in [shoot_store.tag_of(pc.xmp[l])[1] for l in pc.layers]
+
+
+def test_any_error_on_a_shot_skips_it_and_keeps_the_others(tmp_path):
+    class Crashy(ShootComfy):
+        def run(self, wf, on_progress, cancel):
+            if "detect" not in wf and self.creates in (2, 3):  # shot 3 (create runs 3 and 4) crashes twice
+                self.creates += 1
+                raise RuntimeError("bug")
+            return super().run(wf, on_progress, cancel)
+    pc = ShootPC(_doc(), None, tmp_path); msg = _shoot(tmp_path, Crashy(), pc)
+    assert len(pc.placed) == 6 and "Shots 3 failed" in msg
 
 
 def test_a_failing_hero_stops_with_a_plain_message(tmp_path):
