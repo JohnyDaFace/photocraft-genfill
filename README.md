@@ -28,6 +28,10 @@ FLUX.2 [klein]:
 - **Enhance** (in Upscale ▾) gives back the same picture at the same size, crisper and better lit, like a
   professional camera shot, as a layer you can fade or mask.
 - **Upscale** (2× or 4×) redraws the whole image larger with new detail and opens it as a new document.
+- **Styles** (the palette icon): 57 looks in tabs (Photo, Portrait, Product, Art, Eras) that stay on for Create
+  and whole-image edits. With nothing typed, Generate turns a photo into that style. Add **Angles** on top:
+  low angle, bird's-eye, from behind, wide shot…
+- **Results are kept**: close the choice window and reopen it later, even days later, from *Other results*.
 
 Nothing is uploaded anywhere: the bar talks only to PhotoCraft and ComfyUI on your own machine. The one
 exception is a small check at startup that asks GitHub for the latest version number (turn it off in Settings).
@@ -71,6 +75,28 @@ made with the same model, so no real photos are involved.
 results to choose from; the one you pick opens as a new document.
 
 ![Create: two lighthouse pictures made from the prompt alone](docs/showcase/create.jpg)
+
+**Styles**: nothing selected, nothing typed, pick a style and click Generate. The same photo as Anime,
+Watercolour and 1970s.
+
+![Styles: a man in a park as anime, watercolour and a 1970s photo](docs/showcase/styles.jpg)
+
+**Portrait** styles turn a phone selfie into a studio portrait, keeping the same face.
+
+![Portrait styles: a kitchen selfie as an editorial, Rembrandt light and black and white portrait](docs/showcase/portraits.jpg)
+
+**Product** styles give a quick phone photo of something you sell a studio set, or a model holding it. The
+product and its label stay the same.
+
+![Product styles: a perfume bottle on a kitchen counter as a luxury shot and held by a model](docs/showcase/product.jpg)
+
+**Angles** add to the style (or work on their own): the same man and park from a new camera position.
+
+![Angles: the same man from a low angle, a high angle, from behind and in a wide shot](docs/showcase/angles.jpg)
+
+The Style panel: click a thumbnail to turn it on, click it again to turn it off.
+
+![The Style panel, Portrait tab](docs/showcase/style-panel.png)
 
 Not every try is a hit: that's why Generate makes several versions (3 by default) to pick from.
 
