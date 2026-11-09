@@ -36,9 +36,7 @@ def test_reflection_presets_for_windows_and_glasses():
 
 
 def test_reflection_presets_share_one_submenu():
-    bar = SimpleNamespace(use_preset=lambda n: None, presets_btn=None)
-    shown = []
-    bar._menu = lambda anchor, items: shown.extend(items)
-    App.presets_menu(bar)
+    bar = SimpleNamespace(use_preset=lambda n: None)
+    shown = App.preset_items(bar)
     sub = next(i for i in shown if i[0] == "sub" and i[1] == "Remove reflections")
     assert [i[1] for i in sub[2]] == ["Windows", "Glasses"]

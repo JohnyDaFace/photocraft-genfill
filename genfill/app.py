@@ -38,7 +38,7 @@ KOFI_URL = "https://ko-fi.com/T7L52ABIMT"
 BORDERLESS = sys.platform == "win32"  # elsewhere a borderless window can't reliably take keyboard focus
 OK, BAD, UNKNOWN = "#2d9d78", "#e68619", None  # connection dot colours (Spectrum green / orange)
 PLACEHOLDER = {"selection": "Describe what to fill in, or leave empty…",
-               "image": "Describe a change to the whole image…",
+               "image": "Describe a change, or name a thing to change: \"make the car red\"…",
                "empty": "Describe a picture to create…"}
 
 
@@ -261,16 +261,13 @@ class App:
 
         self.prompt = PromptField(top, p, f["body"], 440, lambda: self.start("fill"), self.history_menu)
         self.prompt.pack(side="left", fill="x", expand=True)
-        self.presets_btn = button(icon="presets", command=self.presets_menu, tooltip="Presets")
-        self.presets_btn.pack(side="left")
-        self.style_btn = button(icon="palette", command=self.style_panel)
+        # what Generate will use: each shows its name, and what is switched on
+        self.style_btn = button(icon="palette", text="Style", command=self.style_panel)
         self.style_btn.pack(side="left")
-        self.ref_btn = button(icon="image", command=self.reference_menu)
+        self.style_off_btn = button(icon="x", command=self._clear_styles, tooltip="Turn the style and angle off")
+        self.ref_btn = button(icon="image", text="Reference", command=self.reference_menu)
         self.ref_btn.pack(side="left")
-        self.shoot_btn = button(icon="camera", command=self.shoot_menu,
-                                tooltip="Photoshoot: a set of matching shots of a product or a person")
-        self.shoot_btn.pack(side="left")
-        self.count_btn = button(icon="stack", text=str(self.settings.variations), chevron=True,
+        self.count_btn = button(icon="stack", text=self._count_text(), chevron=True,
                                 command=self.count_menu, tooltip="How many results to choose from")
         self.count_btn.pack(side="left")
         sep()
@@ -279,20 +276,20 @@ class App:
         self.rm_btn = button(icon="eraser", text="Remove", kind="outline", command=lambda: self.start("remove"),
                              tooltip="Remove what's selected (type what it is for better results)")
         self.sel_btn = button(icon="target", text="Select", kind="outline", chevron=True, command=self.select_menu,
-                              tooltip="Find things by name (SAM 3): select, remove, or remove the background")
-        self.exp_btn = button(icon="expand", text="Expand", kind="outline", chevron=True, command=self.expand_menu,
-                              tooltip="Bigger canvas, new edges filled to match")
-        self.up_btn = button(icon="upscale", text="Upscale", kind="outline", chevron=True, command=self.upscale_menu,
-                             tooltip="Bigger copy with new detail, or Enhance at the same size")
+                              tooltip="Find things by name (SAM 3) and select them, or remove the background")
+        self.fix_btn = button(icon="wand", text="Fix", kind="outline", chevron=True, command=self.fix_menu,
+                              tooltip="Remove things, fix faces, enhance, and one-click presets")
+        self.size_btn = button(icon="expand", text="Resize", kind="outline", chevron=True, command=self.resize_menu,
+                               tooltip="Expand the canvas, or upscale to a bigger copy")
         self.create_btn = button(icon="create", text="Create", kind="outline", chevron=True, command=self.create_menu,
-                                 tooltip="A new picture from the prompt, opens as a new document")
-        self.others_btn = button(icon="stack", text="Other results", kind="outline", command=self.show_other_results,
+                                 tooltip="A new picture, a picture from your sketch, or a photoshoot")
+        self.others_btn = button(icon="swap", text="Other results", kind="outline", command=self.show_other_results,
                                  tooltip="Swap the result you placed for another one from the same Generate")
         self.reshoot_btn = button(icon="camera", text="Reshoot", kind="outline", command=self.reshoot_shot,
                                   tooltip="Make this shot again (same shoot, same set)")
         self.gen_btn = button(icon="spark", text="Generate", kind="primary", command=self._generate_or_cancel)
         self.more_btn = button(icon="more", command=self.more_menu, tooltip="Settings, connection, version")
-        self.actions = [self.rm_btn, self.sel_btn, self.exp_btn, self.up_btn, self.create_btn, self.others_btn,
+        self.actions = [self.rm_btn, self.sel_btn, self.fix_btn, self.size_btn, self.create_btn, self.others_btn,
                         self.reshoot_btn, self.gen_btn]
         self.more_btn.pack(side="right", padx=(4, 0))
         if self.update_info:
@@ -313,8 +310,8 @@ class App:
         """Show the buttons that fit the mode and the busy state."""
         for b in self.actions:
             b.pack_forget()
-        shown = {"selection": [self.rm_btn, self.gen_btn],
-                 "image": [self.sel_btn, self.exp_btn, self.up_btn, self.create_btn, self.gen_btn],
+        shown = {"selection": [self.rm_btn, self.fix_btn, self.gen_btn],
+                 "image": [self.sel_btn, self.fix_btn, self.size_btn, self.create_btn, self.gen_btn],
                  "empty": [self.create_btn, self.gen_btn]}[self.mode]
         if (self.last_results is not None or self.tagged) and self.picker is None and not self.busy \
                 and self.mode != "empty":
@@ -341,8 +338,8 @@ class App:
         else:
             self.gen_btn.configure_button(icon="spark", text="Generate", kind="primary", tooltip=(
                 "Fill the selection (Enter)" if self.mode == "selection" else "Change the whole image (Enter)"))
-        for b in (self.rm_btn, self.sel_btn, self.exp_btn, self.up_btn, self.create_btn, self.count_btn,
-                  self.presets_btn, self.style_btn, self.ref_btn, self.shoot_btn):
+        for b in (self.rm_btn, self.sel_btn, self.fix_btn, self.size_btn, self.create_btn, self.count_btn,
+                  self.style_btn, self.style_off_btn, self.ref_btn):
             b.set_enabled(not self.busy)
 
     def set_mode(self, mode: str) -> None:
@@ -422,8 +419,9 @@ class App:
             items.append(("info", "Prompts you use appear here"))
         self._menu(self.prompt, items)
 
-    def presets_menu(self) -> None:
-        items, groups = [("header", "Presets")], {}
+    def preset_items(self) -> list:
+        """The presets, grouped ("Sky: ..." under Sky), for the Fix menu."""
+        items, groups = [], {}
         for name, _ in presets.PRESETS:
             group, _, label = name.partition(": ")
             if label:
@@ -433,7 +431,7 @@ class App:
                 groups[group].append(("item", label[:1].upper() + label[1:], lambda n=name: self.use_preset(n)))
             else:
                 items.append(("item", name, lambda n=name: self.use_preset(n)))
-        self._menu(self.presets_btn, items)
+        return items
 
     def _set_style(self, name: str) -> None:
         s = Settings.load()
@@ -475,7 +473,8 @@ class App:
         except OSError as e:
             self.say(f"Couldn't open {path}: {e}", BAD, hide_after=7000)
 
-    def shoot_menu(self) -> None:
+    def shoot_items(self) -> list:
+        """Photoshoot: the shoots, how many shots, the shape, and editing the shoots."""
         loaded = shoots.load()
         items = [("header", "Photoshoot")]
         for kind, label in (("product", "Product"), ("people", "People")):
@@ -488,7 +487,7 @@ class App:
         items.append(("sub", "Shape", [("check", c, lambda c=c: self._set_create_choice(c),
                                         c == self.settings.create_choice) for c in CREATE_CHOICES]))
         items += [("sep",), ("item", "Edit shoots…", self._edit_shoots, "folder")]
-        self._menu(self.shoot_btn, items)
+        return items
 
     def _pick_shoot(self, name: str) -> None:
         start = str(Path(self.reference).parent) if self.reference else None
@@ -520,8 +519,12 @@ class App:
     def _show_style(self) -> None:
         name = self._style_label()
         self.style_btn.set_on(bool(name))
-        self.style_btn.configure_button(text=name, tooltip=f"Style: {name} (click to change or turn off)" if name
+        self.style_btn.configure_button(text=(name if len(name) <= 26 else name[:25] + "…") if name else "Style",
+                                        tooltip=f"Style on: {name} (click to change)" if name
                                         else "Style: a look added to Create and whole-image edits")
+        self.style_off_btn.pack_forget()
+        if name:  # the x right after the style shows it is on and turns it off in one click
+            self.style_off_btn.pack(side="left", after=self.style_btn)
 
     def style_panel(self) -> None:
         if self.busy:
@@ -535,6 +538,10 @@ class App:
                    width=self.root.winfo_width(), on_edit=self._edit_styles, angle=self.settings.angle,
                    on_angle=self._set_angle, on_clear=self._clear_styles)
 
+    def _count_text(self) -> str:
+        n = self.settings.variations
+        return f"{n} result" + ("s" if n > 1 else "")
+
     def count_menu(self) -> None:
         n = self.settings.variations
         items = [("header", "Results to choose from")]
@@ -542,36 +549,48 @@ class App:
                    lambda i=i: self._set_count(i), i == n) for i in range(1, MAX_VARIATIONS + 1)]
         self._menu(self.count_btn, items)
 
-    def select_menu(self) -> None:
+    def _typed(self):
+        """(typed, short, hint): the prompt box's text, a short form for menus, and what to do when it's empty."""
         typed = self.prompt.get().strip()
         short = (typed if len(typed) <= 28 else typed[:27] + "…")
         hint = lambda: (self.say('Type what to find in the prompt box first, for example "the dog" or "the red '  # noqa: E731
                                  'car", then pick it here.', None, hide_after=7000), self.prompt.entry.focus_set())
-        mine = (lambda: self.start("select", what=typed)) if typed else hint
+        return typed, short, hint
+
+    def select_menu(self) -> None:
+        typed, short, hint = self._typed()
         items = [("header", "Select"),
-                 ("item", f"“{short}”" if typed else "What you type…", mine),
+                 ("item", f"“{short}”" if typed else "What you type…",
+                  (lambda: self.start("select", what=typed)) if typed else hint),
                  ("item", "Sky", lambda: self.start("select", what=FIND["sky"][0], label=FIND["sky"][1])),
                  ("item", "People", lambda: self.start("select", what=FIND["people"][0], label=FIND["people"][1])),
-                 ("sep",), ("header", "Remove"),
-                 ("item", f"“{short}”" if typed else "What you type…",
-                  (lambda: self.start("remove_things", what=typed)) if typed else hint),
-                 ("item", "People", lambda: self.start("remove_things", what=FIND["people"][0],
-                                                       label=FIND["people"][1])),
-                 ("item", "Cars", lambda: self.start("remove_things", what=FIND["cars"][0], label=FIND["cars"][1])),
-                 ("sep",),
+                 ("sep",), ("header", "Cut out"),
                  ("item", f"Remove background, keep “{short}”" if typed else "Remove background…",
-                  (lambda: self.start("cutout", what=typed)) if typed else hint),
-                 ("sep",), ("header", "Faces"),
-                 ("item", "Fix faces", lambda: self.start("faces"))]
+                  (lambda: self.start("cutout", what=typed)) if typed else hint)]
+        self._menu(self.sel_btn, items)
+
+    def fix_menu(self) -> None:
+        typed, short, hint = self._typed()
+        remove = [("item", f"“{short}”" if typed else "What you type…",
+                   (lambda: self.start("remove_things", what=typed)) if typed else hint),
+                  ("item", "People", lambda: self.start("remove_things", what=FIND["people"][0],
+                                                        label=FIND["people"][1])),
+                  ("item", "Cars", lambda: self.start("remove_things", what=FIND["cars"][0], label=FIND["cars"][1]))]
+        faces = [("item", "Sharpen faces", lambda: self.start("faces"))]
         if typed:  # only when picked: text left in the box must never change what plain Fix faces does
-            items.append(("item", f"Fix faces: “{short}”", lambda: self.start("faces", choice="typed")))
+            faces.append(("item", f"As typed: “{short}”", lambda: self.start("faces", choice="typed")))
         if self.reference:  # the picture already chosen, by name, so it's never used by surprise
             name = Path(self.reference).name
             name = name if len(name) <= 28 else name[:27] + "…"
-            items.append(("item", f"Replace face with {name}", lambda: self.start("faces", choice="reference")))
-        items.append(("item", "Replace face with another photo…" if self.reference else
-                      "Replace face with a photo…", self._replace_face_with_photo))
-        self._menu(self.sel_btn, items)
+            faces.append(("item", f"Replace with {name}", lambda: self.start("faces", choice="reference")))
+        faces.append(("item", "Replace with another photo…" if self.reference else "Replace with a photo…",
+                      self._replace_face_with_photo))
+        items = [("header", "Fix"),
+                 ("sub", "Remove", remove),
+                 ("sub", "Faces", faces),
+                 ("item", "Enhance: crisper, better light", lambda: self.start("enhance")),
+                 ("sep",), ("header", "Presets")] + self.preset_items()
+        self._menu(self.fix_btn, items)
 
     def _replace_face_with_photo(self) -> None:
         """Always asks which photo: each person needs their own."""
@@ -579,11 +598,13 @@ class App:
                                        "expression"):
             self.start("faces", choice="reference")
 
-    def expand_menu(self) -> None:
-        last = self.settings.expand_choice
+    def resize_menu(self) -> None:
+        last, factor = self.settings.expand_choice, self.settings.upscale_factor
         items = [("header", "Expand the canvas to")]
         items += [("check", c, lambda c=c: self.start("expand", choice=c), c == last) for c in EXPAND_CHOICES]
-        self._menu(self.exp_btn, items)
+        items += [("sep",), ("header", "Upscale to a new document")]
+        items += [("check", f"{k}× larger", lambda k=k: self.start("upscale", factor=k), k == factor) for k in (2, 4)]
+        self._menu(self.size_btn, items)
 
     def create_menu(self) -> None:
         last = self.settings.create_choice
@@ -593,8 +614,10 @@ class App:
         items += [("check", f"{c}  ({w}×{h})", lambda c=c: act(c), c == last)
                   for c in CREATE_CHOICES for w, h in [create_size(c, self.settings.megapixels)]]
         items += [("sep",), ("info", "Opens as a new document")]
-        if not pick_only:
-            items += [("sep",), ("item", "From my sketch (the active layer)", lambda: self.start("sketch"), "create")]
+        items.append(("sep",))
+        if not pick_only:  # a sketch needs an open picture; a photoshoot starts from a photo file
+            items.append(("item", "From my sketch (the active layer)", lambda: self.start("sketch")))
+        items.append(("sub", "Photoshoot", self.shoot_items()))
         self._menu(self.create_btn, items)
 
     def _set_create_choice(self, choice: str) -> None:
@@ -603,14 +626,6 @@ class App:
         s.save()
         self._arrange()
         self.prompt.entry.focus_set()
-
-    def upscale_menu(self) -> None:
-        last = self.settings.upscale_factor
-        items = [("header", "Upscale to a new document")]
-        items += [("check", f"{k}× larger", lambda k=k: self.start("upscale", factor=k), k == last) for k in (2, 4)]
-        items += [("sep",), ("header", "Same size"),
-                  ("item", "Enhance: crisper, better light", lambda: self.start("enhance"))]
-        self._menu(self.up_btn, items)
 
     def reference_menu(self) -> None:
         if not self.reference:
@@ -667,7 +682,7 @@ class App:
         s = Settings.load()
         s.variations = self.settings.variations = n
         s.save()
-        self.count_btn.configure_button(text=str(n))
+        self.count_btn.configure_button(text=self._count_text())
 
     # -- background work -----------------------------------------------------------------------
     def check_connections(self) -> None:
@@ -1092,7 +1107,7 @@ class App:
     def open_settings(self) -> None:
         def saved(s: Settings) -> None:
             self.settings = s
-            self.count_btn.configure_button(text=str(s.variations))
+            self.count_btn.configure_button(text=self._count_text())
             self.say("Settings saved. Checking connections…", None)
             threading.Thread(target=self.check_connections, daemon=True).start()
         SettingsDialog(self.root, Settings.load(), self.p, self.fonts, saved)

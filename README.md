@@ -16,9 +16,10 @@ FLUX.2 [klein]:
 - **More like this** (Generate Similar): new versions close to a result you almost like.
 - **Remove** takes away whatever is in the selection and fills in the background behind it.
 - **Select ▾** (with SAM 3) finds things by name: type "dog" or "boat" and it selects them, or pick Sky or
-  People. The same menu can **remove** what you typed, all people or all cars in one go, and **remove the
-  background** around what you typed (a layer mask, nothing deleted).
-- **Fix faces** (in Select ▾) finds every face and restores it up close, sharper but the same person.
+  People. It can also **remove the background** around what you typed (a layer mask, nothing deleted).
+- **Fix ▾** holds the one-click fixes: **Remove** what you typed, all people or all cars in one go; **Faces**;
+  **Enhance**; and the **presets** (sky, relight, portrait, reflections, colorize, restore…).
+- **Fix faces** (Fix ▾ › Faces) finds every face and restores it up close, sharper but the same person.
   **Replace face** gives one face the face of the person in another photo, keeping the expression and pose.
 - **Reference picture**: give Generate a second image to take an object or a style from.
 - **Edit** (Generate with nothing selected) changes the whole image as you describe it: "make it night",
@@ -33,13 +34,13 @@ FLUX.2 [klein]:
   around your strokes is redrawn as the real thing, with your sketch's shape, place and colours and the photo's
   light. The result is a new layer above the sketch layer, which is left as it was. Your LoRAs are not used
   for sketches (with one on, an outline sketch tends to be erased instead of drawn). Make 2 to 4 results to pick from.
-- **Photoshoot** (the camera icon) turns one photo of a product or a person into a whole shoot: 8 shots on
+- **Photoshoot** (Create ▾ › Photoshoot) turns one photo of a product or a person into a whole shoot: 8 shots on
   the same set, in the same light, from different angles and poses, opened as layers in a new document.
   **Reshoot** redoes any one shot.
-- **Enhance** (in Upscale ▾) gives back the same picture at the same size, crisper and better lit, like a
+- **Enhance** (in Fix ▾) gives back the same picture at the same size, crisper and better lit, like a
   professional camera shot, as a layer you can fade or mask.
-- **Upscale** (2× or 4×) redraws the whole image larger with new detail and opens it as a new document.
-- **Styles** (the palette icon): 73 looks in tabs (Photo, Portrait, Product, Art, Design, Eras) that stay on for Create
+- **Upscale** (Resize ▾, 2× or 4×) redraws the whole image larger with new detail and opens it as a new document.
+- **Styles** (the **Style** button; it shows the look while one is on, with ✕ to turn it off): 73 looks in tabs (Photo, Portrait, Product, Art, Design, Eras) that stay on for Create
   and whole-image edits. With nothing typed, Generate turns a photo into that style. Add **Angles** on top:
   low angle, bird's-eye, from behind, wide shot…
 - **Results are kept**: close the choice window and reopen it later, even days later, from *Other results*.
@@ -64,7 +65,7 @@ made with the same model, so no real photos are involved.
 
 ![Remove: a traffic cone taken off a park path](docs/showcase/remove.jpg)
 
-**Expand**: nothing selected, Expand ▾ › 16:9. A portrait photo becomes a wide one.
+**Expand**: nothing selected, Resize ▾ › 16:9. A portrait photo becomes a wide one.
 
 ![Expand: a 4:5 photo widened to 16:9](docs/showcase/expand.jpg)
 
@@ -193,13 +194,16 @@ Download the file for your computer from the **Releases** page of this repositor
 
 The app is a small floating bar, like Photoshop's contextual task bar. It follows what you do in PhotoCraft:
 
-- **Something selected:** prompt, **Remove** and **Generate** (fills the selection).
-- **Nothing selected:** prompt, **Select ▾**, **Expand ▾**, **Upscale ▾**, **Create ▾** and **Generate** (changes the whole image).
+- **Something selected:** prompt, **Remove**, **Fix ▾** and **Generate** (fills the selection).
+- **Nothing selected:** prompt, **Select ▾**, **Fix ▾**, **Resize ▾**, **Create ▾** and **Generate** (changes the whole
+  image, or only the thing the prompt names).
 - **No document open:** prompt, the shape of the new picture (for example **1:1 ▾**) and **Create** (or press
   Enter).
 
-The prompt is on top, the buttons under it. At the left of the buttons: **Presets** (sliders icon), **Reference picture** (picture icon; a dot means one is set) and
-the **results count** (how many versions to choose from). Drag the dots left of the prompt to move the bar; it
+The prompt is on top, the buttons under it. At the left of the buttons is what Generate will use: **Style** (shows the
+look while one is on), **Reference** (a dot means a picture is set) and the **results count** (how many versions to
+choose from). At the right are the menus, by what you want to do: **Select** (find things), **Fix** (remove, faces,
+enhance, presets), **Resize** (expand, upscale) and **Create** (new picture, from a sketch, photoshoot). Drag the dots left of the prompt to move the bar; it
 remembers where you put it. Messages appear in a small pill under the bar (click it to hide it). While it works,
 a thin line along the bottom shows progress and **Generate** turns into **Cancel** (or press Esc). The **⋯** menu
 has Settings, the PhotoCraft connection, the version and Quit.
@@ -218,9 +222,9 @@ The prompt box remembers your last 15 prompts: click the clock icon inside it to
 **Remove**: select the object (generously, including its shadow), optionally type what it is ("basket",
 "the person on the left"), and click **Remove**. Naming it helps when the selection holds more than one thing.
 
-**Reference picture**: click the picture icon and pick an image file, then mention it as
+**Reference picture**: click **Reference** and pick an image file, then mention it as
 "image 2" in the prompt: "the logo from image 2 as a poster on the wall", "a chair like the one in image 2",
-"in the style of image 2" (with nothing selected, that restyles the whole picture). Click the icon again to choose another or stop using it. Remove
+"in the style of image 2" (with nothing selected, that restyles the whole picture). Click it again to choose another or stop using it. Remove
 ignores the reference. Like any fill, not every try picks it up, so ask for 3 results.
 
 **Changed your mind?** The *Choose a result* window stays open after you pick one, like Photoshop's variations:
@@ -239,7 +243,7 @@ can't make *More like this*. Change how many sets are kept with `keep_results` i
 **More like this**: in the *Choose a result* window, click *More like this* under a result. You get new
 versions that keep its layout and vary the details; the one you picked stays as choice 1.
 
-**Style**: the palette icon next to the prompt opens thumbnails of each look, in tabs:
+**Style**: the **Style** button under the prompt opens thumbnails of each look, in tabs:
 
 - **Photo**: Professional photo, Film photo, Cinematic, Movie poster, Golden hour, Low-key, Black & white
   film, Film noir, Instant photo, 2000s digital, Fashion editorial, Interior bright (a real-estate look for room photos).
@@ -277,7 +281,7 @@ sentence or two describing the look, use a built-in style's name to change its w
 `hidden` to leave them out. The built-in styles themselves come with the app, so updates can improve them. A
 new or changed style gets its thumbnail made the next time the panel opens (ComfyUI must be running).
 
-**Presets**: the sliders icon next to the prompt opens a menu of ready-made edits; clicking one runs it straight away
+**Presets**: under **Fix ▾ › Presets** are ready-made edits; clicking one runs it straight away
 (what's typed in the prompt box is left alone). With nothing selected they work on the whole image; with a selection,
 only there.
 
@@ -300,13 +304,13 @@ original, so you can lower its opacity, mask parts of it, or delete it. Edits ar
 scaled to your image's size, so on large photos they are softer than the original; use **Upscale** afterwards or
 mask the edit to where it matters. To change just one part, select it and use Generate with a prompt instead.
 
-**Expand**: with nothing selected, click **Expand ▾** and pick a shape (4:5, 1:1, 3:2, 16:9, 9:16, 2:3, or
+**Expand**: with nothing selected, click **Resize ▾** and pick a shape (4:5, 1:1, 3:2, 16:9, 9:16, 2:3, or
 +10% / +25% on each side); it starts right away. It only ever grows the canvas, centred, and fills the new area to match (using the results count
 from Generate). Your document is enlarged only when you pick a result; the filled edges come in as a layer
 "Generative Expand" above your picture. To expand in one direction only, use Image › Canvas Size yourself,
 select the empty part and use Generate.
 
-**Upscale**: with nothing selected, click **Upscale ▾** and pick 2× or 4×. The bigger image opens as a new document; the original is
+**Upscale**: with nothing selected, click **Resize ▾** and pick 2× or 4× larger. The bigger image opens as a new document; the original is
 untouched. With SeedVR2 installed (see the model tables above) it restores real detail, fine lines and texture in
 one step, a few seconds per piece; it follows the picture, not the prompt. Without it, 4x-UltraSharp enlarges the
 picture and FLUX lightly redraws it; without either, the enlarging is a plain resize and the result stays soft.
@@ -320,7 +324,7 @@ as a new document; your open pictures are not touched. Describe it like a photo 
 style ("film photo", "watercolour", "studio product shot"). With a **reference picture** set you can say
 "the chair from image 2 in a sunny loft". For print sizes, use **Upscale** on the result.
 
-**Photoshoot** (the camera icon on the bar): click it and pick a shoot. **Product** has *Clean studio white*,
+**Photoshoot** (Create ▾ › Photoshoot): pick a shoot. **Product** has *Clean studio white*,
 *Skincare morning light*, *Luxury dark*, *Kitchen / lifestyle table* and *Outdoor summer*. **People** has *Studio
 headshots*, *Loft editorial* and *Street / city casual*. Then choose a photo of the product or the person (a phone
 photo is fine). GenFill cuts the subject out of the photo, makes a hero shot on the shoot's set, and then makes the
@@ -344,7 +348,7 @@ so on. Hide layers to see the others, or export each one.
 Tip: the product's label and the person's face are kept as closely as the model can, but small print on a label
 can still come out wrong in a shot or two. Reshoot those shots a few times and pick the version that reads right.
 
-**Enhance**: with nothing selected, **Upscale ▾ › Enhance: crisper, better light**. It works in two passes:
+**Enhance**: with nothing selected, **Fix ▾ › Enhance: crisper, better light**. It works in two passes:
 first it finds better light and colour (only those are kept, so nothing in the picture changes), then it
 redraws the detail lightly while following your picture closely, at full size on big photos. People, objects
 and framing stay the same. It arrives as a layer "Enhance" above your picture: lower its opacity to taste.
@@ -352,24 +356,24 @@ Typing in the prompt steers the light ("golden hour light", "moody, low key"). Y
 choose from. How far the light and colour may change is `enhance_strength` in the settings file (0.35).
 
 **Select ▾** (needs the SAM 3 model above): with nothing selected, type what you're after in the prompt box
-("dog", "boat", "red car"), then open **Select ▾**:
+("dog", "boat", "red car"), then open **Select ▾** or **Fix ▾**:
 
-- **Select “dog”** selects every dog it finds; **Sky** and **People** work without typing.
-- **Remove “dog”**, **People** or **Cars** finds them, selects them and fills them away like Remove (you choose
+- **Select ▾ › “dog”** selects every dog it finds; **Sky** and **People** work without typing.
+- **Fix ▾ › Remove › “dog”**, **People** or **Cars** finds them, selects them and fills them away like Remove (you choose
   from the results as usual). Only the found shapes are redrawn, not a box around them.
-- **Remove background, keep “dog”** puts a layer mask on the active layer that hides everything else. Nothing is
+- **Select ▾ › Remove background, keep “dog”** puts a layer mask on the active layer that hides everything else. Nothing is
   deleted: paint on the mask to fix edges, or delete the mask to undo it. A Background layer becomes "Layer 0".
 
-- **Fix faces** finds every face and restores each one up close at high resolution: sharper eyes, lashes, skin
+- **Fix ▾ › Faces › Sharpen faces** finds every face and restores each one up close at high resolution: sharper eyes, lashes, skin
   and hair, and still the same person. With SeedVR2 installed (the Upscale model, see the model tables) it uses
   that, which keeps people most like themselves; otherwise FLUX partly redraws each face. They arrive as one
   layer holding just the faces with soft edges: lower its opacity or erase a face you'd rather keep. It ignores
-  the prompt box. To change faces, type a wish ("smiling", "eyes open") and pick **Fix faces: “smiling”**
+  the prompt box. To change faces, type a wish ("smiling", "eyes open") and pick **Faces › As typed: “smiling”**
   instead: FLUX redraws the faces to match, so they change more.
-- **Replace face with a photo…** puts the person in that photo in place of one person in your picture. It
+- **Faces › Replace with a photo…** puts the person in that photo in place of one person in your picture. It
   changes the face inside your selection (draw a rough box around it), or the biggest face when nothing is
   selected. It asks for the photo every time, so a different person gets their own; to use the same photo
-  again, pick **Replace face with *name*.jpg**.
+  again, pick **Replace with *name*.jpg**.
   - **With the BFS LoRA** (see the model tables; ⋯ shows whether Replace face has it),
     the whole head is swapped, hair included: the head angle, expression and light come from your picture, the
     face and hair from the photo. Only the photo's head is used, so its clothes and background never come

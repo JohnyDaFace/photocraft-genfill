@@ -10,7 +10,7 @@ from genfill.settings import Settings
 def _bar(tmp_path, monkeypatch, **kw):
     monkeypatch.setattr(shoots, "SHOOTS_FILE", tmp_path / "shoots.json")
     menus = []
-    bar = SimpleNamespace(settings=Settings(), shoot_btn=object(), shoot_tagged=False, _edit_shoots=print, _pick_shoot=print,
+    bar = SimpleNamespace(settings=Settings(), shoot_tagged=False, _edit_shoots=print, _pick_shoot=print,
                           _set_shoot_count=print, _set_create_choice=print, arranged=0, **kw)
     bar._menu = lambda anchor, items, right=False: menus.append(items)
     bar._arrange = lambda: setattr(bar, "arranged", bar.arranged + 1)
@@ -20,8 +20,7 @@ def _bar(tmp_path, monkeypatch, **kw):
 
 def test_menu_lists_groups_counts_shapes_and_edit(tmp_path, monkeypatch):
     bar = _bar(tmp_path, monkeypatch)
-    App.shoot_menu(bar)
-    items = bar.menus[0]
+    items = App.shoot_items(bar)
     subs = {i[1]: i[2] for i in items if i[0] == "sub"}
     assert [i[1] for i in subs["Product"]][0] == "Clean studio white"
     assert "Studio headshots" in [i[1] for i in subs["People"]]

@@ -1,0 +1,64 @@
+"""The bar's four menus (Select, Fix, Resize, Create), with the bar faked: what each one holds."""
+from types import SimpleNamespace
+
+from genfill import shoots
+from genfill.app import App
+from genfill.settings import Settings
+
+
+def _bar(tmp_path, monkeypatch, typed="", reference=None, mode="image"):
+    monkeypatch.setattr(shoots, "SHOOTS_FILE", tmp_path / "shoots.json")
+    bar = SimpleNamespace(settings=Settings(), reference=reference, mode=mode, started=[], menus=[],
+                          prompt=SimpleNamespace(get=lambda: typed), sel_btn=1, fix_btn=2, size_btn=3, create_btn=4,
+                          _edit_shoots=print, _pick_shoot=print, _set_shoot_count=print, _set_create_choice=print,
+                          _replace_face_with_photo=print, use_preset=print)
+    bar.start = lambda job, **kw: bar.started.append((job, kw))
+    bar._menu = lambda anchor, items, right=False: bar.menus.append((anchor, items))
+    for name in ("_typed", "preset_items", "shoot_items"):
+        setattr(bar, name, getattr(App, name).__get__(bar))
+    return bar
+
+
+def _labels(items):
+    return [i[1] for i in items if i[0] in ("item", "sub", "check", "header")]
+
+
+def test_select_only_finds_things(tmp_path, monkeypatch):
+    bar = _bar(tmp_path, monkeypatch, typed="the dog")
+    App.select_menu(bar)
+    labels = _labels(bar.menus[0][1])
+    assert labels == ["Select", "“the dog”", "Sky", "People", "Cut out", "Remove background, keep “the dog”"]
+
+
+def test_fix_holds_remove_faces_enhance_and_the_presets(tmp_path, monkeypatch):
+    bar = _bar(tmp_path, monkeypatch, typed="the dog", reference="C:/p/face.jpg")
+    App.fix_menu(bar)
+    anchor, items = bar.menus[0]
+    assert anchor == 2
+    subs = {i[1]: i[2] for i in items if i[0] == "sub"}
+    assert _labels(subs["Remove"]) == ["“the dog”", "People", "Cars"]
+    assert _labels(subs["Faces"]) == ["Sharpen faces", "As typed: “the dog”", "Replace with face.jpg",
+                                      "Replace with another photo…"]
+    assert "Enhance: crisper, better light" in _labels(items)
+    assert "Presets" in _labels(items) and "Sky" in subs and "Remove reflections" in subs
+    next(i for i in subs["Remove"] if i[1] == "Cars")[2]()
+    assert bar.started[-1][0] == "remove_things"
+
+
+def test_resize_holds_expand_and_upscale(tmp_path, monkeypatch):
+    bar = _bar(tmp_path, monkeypatch)
+    App.resize_menu(bar)
+    labels = _labels(bar.menus[0][1])
+    assert labels[0] == "Expand the canvas to" and "Upscale to a new document" in labels
+    assert labels[-2:] == ["2× larger", "4× larger"]
+
+
+def test_create_holds_sketch_and_photoshoot_and_photoshoot_works_with_nothing_open(tmp_path, monkeypatch):
+    bar = _bar(tmp_path, monkeypatch)
+    App.create_menu(bar)
+    labels = _labels(bar.menus[0][1])
+    assert "From my sketch (the active layer)" in labels and "Photoshoot" in labels
+    empty = _bar(tmp_path, monkeypatch, mode="empty")
+    App.create_menu(empty)
+    labels = _labels(empty.menus[0][1])
+    assert "From my sketch (the active layer)" not in labels and "Photoshoot" in labels
