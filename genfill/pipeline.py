@@ -422,9 +422,12 @@ def _find_named(image: Image.Image, prompt: str, settings: Settings, status: Sta
 
 
 # -- sketch to image: rough strokes on a layer become real content --------------------------------------
-SKETCH_PROMPT = ("Turn the rough hand-drawn sketch in this area into {what}, as a real part of the photo. Follow the "
-                 "sketch's shape, size, position and colours, and match the photo's light, perspective, focus and "
-                 "grain. No drawn lines, outlines or scribbles remain.")
+# A plain outline drawn in black reads to the model as scribbles to clean away ("no drawn lines remain" made it
+# erase the drawing), so the prompt says the lines are the object's outline and the object must be there.
+SKETCH_PROMPT = ("In this area there is a rough hand-drawn sketch, simple lines or shapes, of what must be here: "
+                 "{what}. Replace the sketch with the real thing, photographed: the same shape, size, position and "
+                 "angle as the sketch, its lines becoming the real object's edges, in real materials and the sketch's "
+                 "colours if it has any. Match the photo's light, shadows, perspective, focus and grain.")
 SKETCH_PAD = 0.12      # the redrawn area reaches this far (of the sketch's longer side) around the strokes
 SKETCH_MIN_PAD = 24    # pixels
 SKETCH_MAX_COVER = 0.9  # a layer covering more of the picture than this is a photo, not a sketch
@@ -445,6 +448,9 @@ def sketch_to_image(prompt: str, settings: Settings, status: Status, progress: P
     shaped like the drawing (the model sees the drawing in the picture). The sketch layer is left as it is,
     under the result."""
     pc, comfy = _clients(settings, pc, comfy)
+    # Without the user's LoRAs: with one on, a thin outline sketch was erased every time (0 of 3), without it
+    # 2 of 3 became the drawn thing. A LoRA trained on something else holds the picture as it was.
+    settings = replace(settings, loras=[])
     what = prompt.strip()
     try:
         status("Reading the sketch layer from PhotoCraft…")
@@ -469,7 +475,7 @@ def sketch_to_image(prompt: str, settings: Settings, status: Status, progress: P
     ImageDraw.Draw(mask).rectangle((area[0], area[1], area[2] - 1, area[3] - 1), fill=255)
     status("Selecting the sketch's area in PhotoCraft…")
     _select(pc, settings, mask)
-    told = SKETCH_PROMPT.format(what=what if what else "what it shows, realistically")
+    told = SKETCH_PROMPT.format(what=what if what else "what the sketch shows")
     return generate(told, settings, status, progress, cancel, pc=pc, comfy=comfy, count=count,
                     name=f"Sketch – {what}" if what else "Sketch")
 

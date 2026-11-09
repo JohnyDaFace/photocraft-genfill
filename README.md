@@ -31,7 +31,8 @@ FLUX.2 [klein]:
 - **Sketch to image** (Create ▾ › From my sketch): draw roughly on a new empty layer (a few coloured shapes and
   lines are enough), keep that layer active, type what it is ("a potted olive tree"), and choose it. The area
   around your strokes is redrawn as the real thing, with your sketch's shape, place and colours and the photo's
-  light. The result is a new layer above the sketch layer, which is left as it was.
+  light. The result is a new layer above the sketch layer, which is left as it was. Your LoRAs are not used
+  for sketches (with one on, an outline sketch tends to be erased instead of drawn). Make 2 to 4 results to pick from.
 - **Photoshoot** (the camera icon) turns one photo of a product or a person into a whole shoot: 8 shots on
   the same set, in the same light, from different angles and poses, opened as layers in a new document.
   **Reshoot** redoes any one shot.

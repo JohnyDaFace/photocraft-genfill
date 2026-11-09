@@ -959,3 +959,12 @@ def test_no_sketch_says_how_to_make_one(tmp_path, bounds, name, visible, says):
     with pytest.raises(UserFacingError, match=says):
         _sketch(pc, tmp_path)
     assert not pc.selected
+
+
+def test_a_sketch_is_redrawn_without_the_users_loras(tmp_path):
+    from dataclasses import replace as _r
+    from genfill.pipeline import sketch_to_image
+    pc, comfy = SketchPC(_doc(), (100, 400, 600, 700), tmp_path), FakeComfy()
+    s = _r(_settings(tmp_path), loras=[{"name": "mine.safetensors", "strength": 1.0}])
+    sketch_to_image("a red car", s, lambda m: None, lambda f: None, threading.Event(), pc=pc, comfy=comfy, count=1)
+    assert "mine.safetensors" not in str(comfy.wfs[-1])
