@@ -22,8 +22,24 @@ def test_flux3_workflows_use_its_text_encoder_and_own_schedule():
                build_create_workflow("a cat", 1, 8, 1024, 1024, m)):
         assert wf["clip"]["inputs"]["type"] == "flux3"
         assert wf["sigmas"]["class_type"] == "BasicScheduler" and wf["sigmas"]["inputs"]["steps"] == 8
+        assert wf["sampler"]["inputs"]["sampler_name"] == "er_sde"  # as BFL's own workflow
     wf = build_edit_workflow("a.png", "x", 1, 4, 1024, 1024, {**FAMILIES["flux2"].models})  # no family: FLUX.2
     assert wf["clip"]["inputs"]["type"] == "flux2" and wf["sigmas"]["class_type"] == "Flux2Scheduler"
+    assert wf["sampler"]["inputs"]["sampler_name"] == "euler"
+
+
+def test_flux3_old_default_steps_move_to_15(tmp_path):
+    import json
+    p = tmp_path / "s.json"
+    p.write_text(json.dumps({"settings_version": 2, "model_family": "flux3", "steps": 8}), encoding="utf-8")
+    assert Settings.load(p).steps == 15
+    p.write_text(json.dumps({"settings_version": 2, "steps": 4, "other_families": {"flux3": {"steps": 8}}}),
+                 encoding="utf-8")
+    s = Settings.load(p)
+    s.switch_family("flux3")
+    assert s.steps == 15
+    p.write_text(json.dumps({"settings_version": 3, "model_family": "flux3", "steps": 8}), encoding="utf-8")
+    assert Settings.load(p).steps == 8  # chosen by hand after the update: kept
 
 
 def test_flux3_fills_get_an_instruction():

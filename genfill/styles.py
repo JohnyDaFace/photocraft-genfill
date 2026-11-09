@@ -43,8 +43,9 @@ DEFAULT_STYLES: list[tuple[str, str]] = [
      "Analog film photograph on Kodak Portra 400, warm natural daylight, soft organic grain, gentle highlight "
      "roll-off, creamy skin tones and slightly faded, nostalgic colour."),
     ("Cinematic",
-     "Cinematic film still from a big-budget drama, anamorphic widescreen lens, motivated practical lighting with "
-     "deep shadows, teal and amber colour grade, light haze in the air, subtle 35mm grain, shallow depth of field."),
+     "Cinematic film still from a big-budget drama, anamorphic lens look, motivated practical lighting with "
+     "deep shadows, teal and amber colour grade, light haze in the air, subtle 35mm grain, shallow depth of field, "
+     "the image fills the whole frame with no black bars."),
     ("Movie poster",
      "Dramatic movie poster look, bold heroic composition, striking rim lighting, high contrast, rich saturated "
      "colours, polished high-end finish. No text, no title, no lettering anywhere in the picture."),

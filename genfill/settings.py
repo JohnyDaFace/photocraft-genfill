@@ -130,7 +130,13 @@ class Settings:
             return cls()
         if data.get("settings_version", 1) < 2 and s.megapixels == 1.0:
             s.megapixels = 2.0  # the old default: move to the sharper new one (a value set by hand stays)
-        s.settings_version = 2
+        if data.get("settings_version", 1) < 3:  # FLUX 3's old default of 8 steps: move to the official 15
+            if s.model_family == "flux3" and s.steps == 8:
+                s.steps = FAMILIES["flux3"].steps
+            saved = s.other_families.get("flux3") if isinstance(s.other_families, dict) else None
+            if isinstance(saved, dict) and saved.get("steps") == 8:
+                saved["steps"] = FAMILIES["flux3"].steps
+        s.settings_version = 3
         if s.model_family not in FAMILIES:
             s.model_family = DEFAULT_FAMILY
         s.models = {**family(s.model_family).models, **(s.models if isinstance(s.models, dict) else {})}

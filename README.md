@@ -139,6 +139,11 @@ VAE, plus:
 | `flux3-image-klein-int8-convrot.safetensors` | `diffusion_models/` | [black-forest-labs/flux-3-image-klein-comfy](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/blob/main/diffusion_models/flux3-image-klein-int8-convrot.safetensors) (5.8 GB) |
 | `qwen3vl_4b_int8_convrot.safetensors` | `text_encoders/` | [black-forest-labs/flux-3-image-klein-comfy](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/blob/main/text_encoders/qwen3vl_4b_int8_convrot.safetensors) (4.9 GB) |
 
+FLUX 3 runs as in Black Forest Labs' own workflow (15 steps, the er_sde sampler), without its slow 9B prompt
+upsampler. It aims at natural, un-retouched photos; for a polished look, add a style or use FLUX.2. It keeps
+what you don't name very faithfully, which is great for local edits but means a style applied to an existing
+picture barely changes it: restyle with FLUX.2 or Qwen.
+
 **Or Qwen Image 2.1 Turbo** (8 steps on its own schedule):
 
 | File | Put it in `ComfyUI/models/…` | Download |
@@ -444,7 +449,7 @@ open PhotoCraft. Starting the bar by hand always shows it.
 
 **⋯ › Settings…** has the ComfyUI address (with a Test button), the image model (FLUX.2 Klein 9B, FLUX 3 Klein,
 Qwen Image 2.1 Turbo or Krea 2 Turbo) and its three files (dropdowns list what your ComfyUI has; each model remembers
-its own), steps (FLUX.2: 4 = fast, 8 = finer; FLUX 3: 8 = fast, 16 = finer; Qwen and Krea: 8), upscale strength (0.2 subtle – 0.4 strong), PhotoCraft's control
+its own), steps (FLUX.2: 4 = fast, 8 = finer; FLUX 3: 15 = best, 8 = faster; Qwen and Krea: 8), upscale strength (0.2 subtle – 0.4 strong), PhotoCraft's control
 port, and:
 
 - **Check compatibility**: after a PhotoCraft update, runs every PhotoCraft step this window uses and shows

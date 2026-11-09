@@ -115,13 +115,17 @@ def _extras(wf: dict, names) -> list[dict]:
     return [{"pixels": _load(wf, f"extra{i}_image", n)} for i, n in enumerate(names, 1)]
 
 
+def _sampler(models: dict) -> str:
+    return family(models.get("family")).sampler
+
+
 def _sampling(latent: list, positive: list, seed: int, sigmas: list, out_prefix: str,
-              model: list = ("unet", 0)) -> dict:
+              model: list = ("unet", 0), sampler: str = "euler") -> dict:
     return {
         "neg": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": positive}},
         "guider": {"class_type": "CFGGuider",
                    "inputs": {"model": list(model), "positive": positive, "negative": ["neg", 0], "cfg": 1.0}},
-        "sampler": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
+        "sampler": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": sampler}},
         "noise": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
         "sample": {"class_type": "SamplerCustomAdvanced",
                    "inputs": {"noise": ["noise", 0], "guider": ["guider", 0], "sampler": ["sampler", 0],
@@ -156,7 +160,7 @@ def build_fill_workflow(image_name: str, mask_name: str, prompt: str, seed: int,
     })
     first = {"pixels": _load(wf, "ref_image", ref_name)} if ref_name else {"pixels": image, "latent": ["encode", 0]}
     conditioning = _condition(wf, models, prompt or DEFAULT_PROMPT, [first] + _extras(wf, extra_refs))
-    wf.update(_sampling(["masked", 0], conditioning, seed, _sigmas(wf, denoise), "genfill", _model_ref(wf)))
+    wf.update(_sampling(["masked", 0], conditioning, seed, _sigmas(wf, denoise), "genfill", _model_ref(wf), _sampler(models)))
     return _finish(wf)
 
 
@@ -179,7 +183,7 @@ def build_edit_workflow(image_name: str, prompt: str, seed: int, steps: int,
     if fam.encoder == "text":
         denoise = min(denoise, fam.redraw)
     wf.update(_sampling(["encode", 0], _condition(wf, models, prompt, refs), seed, _sigmas(wf, denoise),
-                        "genfill_edit", _model_ref(wf)))
+                        "genfill_edit", _model_ref(wf), _sampler(models)))
     return _finish(wf)
 
 
@@ -195,7 +199,7 @@ def build_create_workflow(prompt: str, seed: int, steps: int, width: int, height
         "sigmas": _schedule(wf, models, steps, width, height),
     })
     conditioning = _condition(wf, models, prompt, _extras(wf, extra_refs))
-    wf.update(_sampling(["latent", 0], conditioning, seed, ["sigmas", 0], "genfill_create", _model_ref(wf)))
+    wf.update(_sampling(["latent", 0], conditioning, seed, ["sigmas", 0], "genfill_create", _model_ref(wf), _sampler(models)))
     return _finish(wf)
 
 
@@ -229,7 +233,7 @@ def build_refine_workflow(image_name: str, prompt: str, seed: int, steps: int, d
     })
     conditioning = _condition(wf, models, f"{UPSCALE_PROMPT} {prompt}".strip(),
                               [{"pixels": pixels, "latent": ["encode", 0]}])
-    wf.update(_sampling(["encode", 0], conditioning, seed, ["split", 1], "genfill_up", _model_ref(wf)))
+    wf.update(_sampling(["encode", 0], conditioning, seed, ["split", 1], "genfill_up", _model_ref(wf), _sampler(models)))
     return _finish(wf)
 
 

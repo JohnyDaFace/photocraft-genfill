@@ -20,6 +20,7 @@ class Family:
     #                        the pictures; "text": a text-to-image model that can't be shown pictures
     sigmas: str = ""    # a distilled model's own schedule, used when Steps matches it
     redraw: float = 1.0  # "text" models: how much of the picture a whole-image edit redraws (they can't follow it)
+    sampler: str = "euler"  # ComfyUI sampler; FLUX 3's official workflow uses er_sde
 
 
 FLUX3_URL = "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/"
@@ -45,7 +46,8 @@ FAMILIES: dict[str, Family] = {
         urls={"unet": FLUX3_URL + "diffusion_models/flux3-image-klein-int8-convrot.safetensors",
               "clip": FLUX3_URL + "text_encoders/qwen3vl_4b_int8_convrot.safetensors",
               "vae": FLUX3_URL + "vae/flux2-vae.safetensors"},
-        steps=8, scheduler="simple", steps_hint="8 = fast, 16 = finer", head_swap=False, fill_instruction=True),
+        steps=15, scheduler="simple", steps_hint="15 = best, 8 = faster", head_swap=False, fill_instruction=True,
+        sampler="er_sde"),
     "qwen21": Family(
         label="Qwen Image 2.1 Turbo",
         clip_type="qwen_image",
