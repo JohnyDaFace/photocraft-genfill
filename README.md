@@ -139,8 +139,25 @@ VAE, plus:
 | `flux3-image-klein-int8-convrot.safetensors` | `diffusion_models/` | [black-forest-labs/flux-3-image-klein-comfy](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/blob/main/diffusion_models/flux3-image-klein-int8-convrot.safetensors) (5.8 GB) |
 | `qwen3vl_4b_int8_convrot.safetensors` | `text_encoders/` | [black-forest-labs/flux-3-image-klein-comfy](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/blob/main/text_encoders/qwen3vl_4b_int8_convrot.safetensors) (4.9 GB) |
 
-Replace face's head-swap LoRA (below) is made for FLUX.2 Klein, so with FLUX 3 it borrows only the face. Your own
-LoRAs are kept per model: switching models switches them too.
+**Or Qwen Image 2.1 Turbo** (8 steps on its own schedule):
+
+| File | Put it in `ComfyUI/models/…` | Download |
+|---|---|---|
+| `qwen_image_2.1_turbo_int8_convrot.safetensors` | `diffusion_models/` | [Comfy-Org/Qwen-Image-2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/tree/main/diffusion_models) (6.8 GB) |
+| `qwen3vl_8b_int8_convrot.safetensors` | `text_encoders/` | [Comfy-Org/Qwen-Image-2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/tree/main/text_encoders) (8.7 GB) |
+| `qwen_image_2.1_vae_bf16.safetensors` | `vae/` | [Comfy-Org/Qwen-Image-2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/tree/main/vae) |
+
+**Or Krea 2 Turbo**, for new pictures only: it can't be shown a picture, so a whole-picture edit
+("make it night") is refused, and fills are rougher than with the others.
+
+| File | Put it in `ComfyUI/models/…` | Download |
+|---|---|---|
+| `krea2_turbo_fp8_scaled.safetensors` | `diffusion_models/` | [Comfy-Org/Krea-2](https://huggingface.co/Comfy-Org/Krea-2/tree/main/diffusion_models) |
+| `qwen3vl_4b_fp8_scaled.safetensors` | `text_encoders/` | [Comfy-Org/Krea-2](https://huggingface.co/Comfy-Org/Krea-2/tree/main/text_encoders) |
+| `qwen_image_vae.safetensors` | `vae/` | [Comfy-Org/Krea-2](https://huggingface.co/Comfy-Org/Krea-2/tree/main/vae) |
+
+Replace face's head-swap LoRA (below) is made for FLUX.2 Klein, so with the other models it borrows only the face.
+Your own LoRAs are kept per model: switching models switches them too.
 
 For **Select ▾** (optional; everything else works without it):
 
@@ -425,9 +442,9 @@ open PhotoCraft. Starting the bar by hand always shows it.
 
 ## Settings
 
-**⋯ › Settings…** has the ComfyUI address (with a Test button), the image model (FLUX.2 Klein 9B or FLUX 3 Klein)
-and its three files (dropdowns list what your ComfyUI has; each model remembers its own), steps (FLUX.2: 4 = fast,
-8 = finer; FLUX 3: 8 = fast, 16 = finer), upscale strength (0.2 subtle – 0.4 strong), PhotoCraft's control
+**⋯ › Settings…** has the ComfyUI address (with a Test button), the image model (FLUX.2 Klein 9B, FLUX 3 Klein,
+Qwen Image 2.1 Turbo or Krea 2 Turbo) and its three files (dropdowns list what your ComfyUI has; each model remembers
+its own), steps (FLUX.2: 4 = fast, 8 = finer; FLUX 3: 8 = fast, 16 = finer; Qwen and Krea: 8), upscale strength (0.2 subtle – 0.4 strong), PhotoCraft's control
 port, and:
 
 - **Check compatibility**: after a PhotoCraft update, runs every PhotoCraft step this window uses and shows

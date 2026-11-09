@@ -209,6 +209,15 @@ def _gen(pc, comfy, tmp_path, prompt="", count=None):
                     pc=pc, comfy=comfy, count=count)
 
 
+def test_create_only_model_refuses_whole_image_edit(tmp_path):
+    pc, comfy = FakePC(_doc(), None), FakeComfy()
+    s = _settings(tmp_path)
+    s.switch_family("krea2")
+    with pytest.raises(UserFacingError, match="can only make new pictures"):
+        generate("make it night", s, lambda m: None, lambda f: None, threading.Event(), pc=pc, comfy=comfy, count=1)
+    assert comfy.runs == 0
+
+
 def test_no_selection_with_prompt_edits_whole_image(tmp_path):
     pc, comfy = FakePC(_doc(), None), FakeComfy()
     name = _go(run_fill, pc, comfy, tmp_path, "make it night")
@@ -267,7 +276,7 @@ def test_reference_is_uploaded_and_used(tmp_path):
     assert len(comfy.uploads) == 3                      # source, mask, reference
     w, h = comfy.uploads[2]
     assert w % 16 == 0 and h % 16 == 0 and w * h <= 2_200_000  # about the working size (2 MP)
-    assert "extra2_ref" in seen[0]
+    assert "ref2" in seen[0]
 
 
 def test_remove_needs_a_selection(tmp_path):
@@ -510,7 +519,7 @@ def test_replace_face_is_an_edit_of_the_face_with_the_reference_face_as_image_2(
     r = _faces(tmp_path, comfy, count=1, reference=Image.new("RGB", (800, 1000), "white"))
     assert "genfill_face_ref.png" in comfy.names
     for wf in comfy.edits:
-        assert "ref" in wf and "extra2_ref" in wf          # image 1 = the face crop, image 2 = the reference
+        assert "ref1" in wf and "ref2" in wf          # image 1 = the face crop, image 2 = the reference
         assert "image 2" in wf["text"]["inputs"]["text"]
         assert "split" not in wf                            # a full edit, not a partial redraw
     assert r.layer == "Replace face"
@@ -532,7 +541,7 @@ def test_replace_face_swaps_the_whole_head_with_the_face_swap_lora_when_installe
     loras = [n["inputs"]["lora_name"] for n in wf.values() if n.get("class_type") == "LoraLoaderModelOnly"]
     assert loras == [BFS]                                  # the swap LoRA instead of the user's own
     assert wf["text"]["inputs"]["text"].startswith("head_swap:")
-    assert "extra2_ref" in wf                              # image 1 = the picture, image 2 = the head
+    assert "ref2" in wf                                    # image 1 = the picture, image 2 = the head
     assert comfy.uploads[comfy.names.index("genfill_face_ref.png")] == (512, 512)
     a = np.asarray(r.images[0].getchannel("A"))
     assert a[1125, 1000] == 255                            # the face
@@ -622,8 +631,8 @@ def test_enhance_small_picture_is_one_partial_redraw_per_result(tmp_path):
     r = _enhance(tmp_path, doc, comfy, count=2, prompt="golden hour")
     assert len(comfy.edits) == 4 and len(r.images) == 2  # per result: light and colour, then detail
     look, detail = comfy.edits[0], comfy.edits[1]
-    assert "ref" not in look and look["split"]["inputs"]["denoise"] == 0.35
-    assert "ref" in detail and detail["split"]["inputs"]["denoise"] == 0.3   # guided by the picture itself
+    assert "ref1" not in look and look["split"]["inputs"]["denoise"] == 0.35
+    assert "ref1" in detail and detail["split"]["inputs"]["denoise"] == 0.3   # guided by the picture itself
     for wf in comfy.edits:
         assert "professional" in wf["text"]["inputs"]["text"] and "golden hour" in wf["text"]["inputs"]["text"]
     assert comfy.uploads[1][0] > 800                     # the detail pass enlarges a small picture
@@ -637,7 +646,7 @@ def test_enhance_big_picture_adds_full_size_detail_tiles(tmp_path):
     r = _enhance(tmp_path, doc, comfy, count=1)
     tiles = imaging.tile_boxes(3000, 2000)
     assert len(comfy.edits) == 1 + len(tiles)            # the look, then the detail tiles
-    assert comfy.edits[1]["split"]["inputs"]["denoise"] == 0.3 and "ref" in comfy.edits[1]
+    assert comfy.edits[1]["split"]["inputs"]["denoise"] == 0.3 and "ref1" in comfy.edits[1]
     assert max(comfy.uploads[1:]) <= (1024, 1024)        # tiles at full size, not shrunk
     assert r.images[0].size == (3000, 2000)
 
@@ -723,7 +732,7 @@ def test_create_reference_is_image_1_for_the_model(tmp_path):
 
     class C(FakeComfy):
         def run(self, wf, on_progress, cancel):
-            seen.append((wf["text"]["inputs"]["text"], "extra1_ref" in wf))
+            seen.append((wf["text"]["inputs"]["text"], "ref1" in wf))
             return super().run(wf, on_progress, cancel)
     _create(tmp_path, C(), prompt="the shoe from Image 2 on a rock", count=1,
             reference=Image.new("RGB", (300, 200), "red"))

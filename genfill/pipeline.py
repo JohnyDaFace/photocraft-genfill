@@ -188,6 +188,10 @@ def _candidates(job: Job, settings: Settings, status: Status, progress: Progress
         ww, wh = imaging.crop_working_size(cw, ch, settings.megapixels)
     else:
         ww, wh = imaging.working_size(src.width, src.height, settings.megapixels)
+    fam = family(settings.model_family)
+    if edit and fam.encoder == "text":
+        raise UserFacingError(f"{fam.label.split(' (')[0]} can only make new pictures, not edit one. "
+                              "Select an area to fill, or pick another image model in Settings.")
     status("Sending to ComfyUI…")
     comfy.check()
     if not (job.create and start is None):  # creating needs no picture to start from
@@ -204,7 +208,7 @@ def _candidates(job: Job, settings: Settings, status: Status, progress: Progress
         if cancel.is_set():
             raise UserFacingError("Cancelled.")
         what = "Creating" if job.create else "Editing the image" if edit else "Generating"
-        status(f"{what} with Flux 2 Klein" + (f" ({i + 1} of {count})" if count > 1 else "") + "…"
+        status(f"{what} with {fam.label.split(' (')[0]}" +(f" ({i + 1} of {count})" if count > 1 else "") + "…"
                + (" (first run loads the model)" if i == 0 else ""))
         if count > 1:
             progress(i / count)

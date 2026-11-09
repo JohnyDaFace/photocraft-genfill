@@ -126,7 +126,7 @@ def test_reference_images_are_chained_after_the_source():
     from genfill.comfy import build_edit_workflow
     for wf in (build_fill_workflow("i.png", "m.png", "p", 1, 4, 64, 64, MODELS, extra_refs=["r.png"]),
                build_edit_workflow("i.png", "p", 1, 4, 64, 64, MODELS, extra_refs=["r.png"])):
-        assert wf["extra2_image"]["inputs"]["image"] == "r.png"
-        assert wf["extra2_ref"]["inputs"]["conditioning"] == ["ref", 0]  # source first = image 1
-        assert wf["guider"]["inputs"]["positive"] == ["extra2_ref", 0]
-        assert wf["neg"]["inputs"]["conditioning"] == ["extra2_ref", 0]
+        assert wf["extra1_image"]["inputs"]["image"] == "r.png"
+        assert wf["ref2"]["inputs"]["conditioning"] == ["ref1", 0]  # source first = image 1
+        assert wf["guider"]["inputs"]["positive"] == ["ref2", 0]
+        assert wf["neg"]["inputs"]["conditioning"] == ["ref2", 0]

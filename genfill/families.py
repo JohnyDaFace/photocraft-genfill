@@ -16,9 +16,15 @@ class Family:
     steps_hint: str     # shown next to Steps in Settings
     head_swap: bool     # Replace face's head-swap LoRA is trained for this model
     fill_instruction: bool = False  # fills need an instruction ("Add a dog"); a bare "a dog" repaints what was there
+    encoder: str = "flux"  # "flux": text + ReferenceLatent per picture; "qwen21": one node sees the text and
+    #                        the pictures; "text": a text-to-image model that can't be shown pictures
+    sigmas: str = ""    # a distilled model's own schedule, used when Steps matches it
+    redraw: float = 1.0  # "text" models: how much of the picture a whole-image edit redraws (they can't follow it)
 
 
 FLUX3_URL = "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/"
+QWEN21_URL = "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/"
+KREA2_URL = "https://huggingface.co/Comfy-Org/Krea-2/tree/main/"
 
 FAMILIES: dict[str, Family] = {
     "flux2": Family(
@@ -40,6 +46,24 @@ FAMILIES: dict[str, Family] = {
               "clip": FLUX3_URL + "text_encoders/qwen3vl_4b_int8_convrot.safetensors",
               "vae": FLUX3_URL + "vae/flux2-vae.safetensors"},
         steps=8, scheduler="simple", steps_hint="8 = fast, 16 = finer", head_swap=False, fill_instruction=True),
+    "qwen21": Family(
+        label="Qwen Image 2.1 Turbo",
+        clip_type="qwen_image",
+        models={"unet": "qwen_image_2.1_turbo_int8_convrot.safetensors",
+                "clip": "qwen3vl_8b_int8_convrot.safetensors", "vae": "qwen_image_2.1_vae_bf16.safetensors"},
+        urls={"unet": QWEN21_URL + "diffusion_models/qwen_image_2.1_turbo_int8_convrot.safetensors",
+              "clip": QWEN21_URL + "text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+              "vae": QWEN21_URL + "vae/qwen_image_2.1_vae_bf16.safetensors"},
+        steps=8, scheduler="simple", steps_hint="8 = its own fast schedule", head_swap=False,
+        encoder="qwen21", sigmas="1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0"),
+    "krea2": Family(
+        label="Krea 2 Turbo (create only)",
+        clip_type="krea2",
+        models={"unet": "krea2_turbo_fp8_scaled.safetensors", "clip": "qwen3vl_4b_fp8_scaled.safetensors",
+                "vae": "qwen_image_vae.safetensors"},
+        urls={"unet": KREA2_URL + "diffusion_models", "clip": KREA2_URL + "text_encoders",
+              "vae": KREA2_URL + "vae"},
+        steps=8, scheduler="simple", steps_hint="8 = fast", head_swap=False, encoder="text", redraw=0.6),
 }
 DEFAULT_FAMILY = "flux2"
 

@@ -37,13 +37,17 @@ REQUIRED_NODES = ["Flux2Scheduler", "ReferenceLatent", "SetLatentNoiseMask", "Sp
 def _loaders(models: dict) -> dict:
     """The model, text encoder and VAE. `models["loras"]` (optional): LoRAs chained after the model as
     LoraLoaderModelOnly nodes, each a file name or {"name": …, "strength": …}; the last one is "model"."""
+    fam = family(models.get("family"))
     wf = {
         "unet": {"class_type": "UNETLoader", "inputs": {"unet_name": models["unet"], "weight_dtype": "default"}},
-        "clip": {"class_type": "CLIPLoader", "inputs": {"clip_name": models["clip"],
-                                                        "type": family(models.get("family")).clip_type}},
+        "clip": {"class_type": "CLIPLoader", "inputs": {"clip_name": models["clip"], "type": fam.clip_type}},
         "vae": {"class_type": "VAELoader", "inputs": {"vae_name": models["vae"]}},
     }
     model = ["unet", 0]
+    if fam.encoder == "qwen21":  # keeps the reference images' part of the sequence between steps
+        wf["cache"] = {"class_type": "QwenImage21Cache", "inputs": {"model": model, "device": "auto",
+                                                                    "dtype": "default"}}
+        model = ["cache", 0]
     for i, lora in enumerate(models.get("loras") or []):
         name, strength = (lora, 1.0) if isinstance(lora, str) else (lora.get("name"), lora.get("strength", 1.0))
         if not name:
@@ -51,21 +55,64 @@ def _loaders(models: dict) -> dict:
         wf[f"lora{i}"] = {"class_type": "LoraLoaderModelOnly",
                           "inputs": {"model": model, "lora_name": name, "strength_model": float(strength)}}
         model = [f"lora{i}", 0]
+    wf["_model"] = model  # removed by _finish: where sampling takes the model from
     return wf
 
 
 def _model_ref(wf: dict) -> list:
-    """The model to sample with: the last LoRA in the chain, or the plain model."""
-    loras = sorted((int(k[4:]) for k in wf if k.startswith("lora") and k[4:].isdigit()))
-    return [f"lora{loras[-1]}", 0] if loras else ["unet", 0]
+    """The model to sample with: after the cache and the LoRAs, or the plain model."""
+    return list(wf.get("_model", ["unet", 0]))
+
+
+def _finish(wf: dict) -> dict:
+    wf.pop("_model", None)
+    return wf
 
 
 def _schedule(wf: dict, models: dict, steps: int, width: int, height: int) -> dict:
-    """The noise schedule: FLUX.2's size-aware one, or the model's own (FLUX 3)."""
-    if family(models.get("family")).scheduler == "flux2":
+    """The noise schedule: FLUX.2's size-aware one, a distilled model's own fixed one, or the model's own."""
+    fam = family(models.get("family"))
+    if fam.scheduler == "flux2":
         return {"class_type": "Flux2Scheduler", "inputs": {"steps": steps, "width": width, "height": height}}
+    if fam.sigmas and steps == fam.sigmas.count(","):
+        return {"class_type": "ManualSigmas", "inputs": {"sigmas": fam.sigmas}}
     return {"class_type": "BasicScheduler",
             "inputs": {"model": _model_ref(wf), "scheduler": "simple", "steps": steps, "denoise": 1.0}}
+
+
+def _condition(wf: dict, models: dict, prompt: str, refs: list[dict]) -> list:
+    """The prompt and the pictures it refers to ("image 1", "image 2"… in order), as the family takes them.
+    Each ref: {"pixels": node output} and, when already encoded, {"latent": node output}."""
+    fam = family(models.get("family"))
+    if fam.encoder == "qwen21":
+        inputs = {"clip": ["clip", 0], "prompt": prompt, "negative_prompt": "", "resolution": 0}
+        if refs:
+            inputs["vae"] = ["vae", 0]
+        for i, r in enumerate(refs, 1):
+            inputs[f"images.image_{i}"] = r["pixels"]
+        wf["text"] = {"class_type": "TextEncodeQwenImage21", "inputs": inputs}
+        return ["text", 0]
+    wf["text"] = {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["clip", 0]}}
+    conditioning = ["text", 0]
+    if fam.encoder != "flux":  # a text-to-image model: it can't be shown pictures
+        return conditioning
+    for i, r in enumerate(refs, 1):
+        latent = r.get("latent")
+        if latent is None:
+            wf[f"ref{i}_encode"] = {"class_type": "VAEEncode", "inputs": {"pixels": r["pixels"], "vae": ["vae", 0]}}
+            latent = [f"ref{i}_encode", 0]
+        wf[f"ref{i}"] = {"class_type": "ReferenceLatent", "inputs": {"conditioning": conditioning, "latent": latent}}
+        conditioning = [f"ref{i}", 0]
+    return conditioning
+
+
+def _load(wf: dict, key: str, name: str) -> list:
+    wf[key] = {"class_type": "LoadImage", "inputs": {"image": name}}
+    return [key, 0]
+
+
+def _extras(wf: dict, names) -> list[dict]:
+    return [{"pixels": _load(wf, f"extra{i}_image", n)} for i, n in enumerate(names, 1)]
 
 
 def _sampling(latent: list, positive: list, seed: int, sigmas: list, out_prefix: str,
@@ -84,19 +131,6 @@ def _sampling(latent: list, positive: list, seed: int, sigmas: list, out_prefix:
     }
 
 
-def _add_references(wf: dict, conditioning: list, images: list[str], first: int = 2) -> list:
-    """Chain one ReferenceLatent per extra image after `conditioning` (Klein sees them as image 2, 3…,
-    or from `first`); returns the conditioning to sample with."""
-    for i, name in enumerate(images, first):
-        wf[f"extra{i}_image"] = {"class_type": "LoadImage", "inputs": {"image": name}}
-        wf[f"extra{i}_encode"] = {"class_type": "VAEEncode",
-                                  "inputs": {"pixels": [f"extra{i}_image", 0], "vae": ["vae", 0]}}
-        wf[f"extra{i}_ref"] = {"class_type": "ReferenceLatent",
-                               "inputs": {"conditioning": conditioning, "latent": [f"extra{i}_encode", 0]}}
-        conditioning = [f"extra{i}_ref", 0]
-    return conditioning
-
-
 def _sigmas(wf: dict, denoise: float) -> list:
     """Full schedule, or only its low-noise end for a partial redraw (`denoise` < 1: keeps the
     composition of the input and varies the details: Generate Similar, Harmonize)."""
@@ -109,73 +143,60 @@ def _sigmas(wf: dict, denoise: float) -> list:
 def build_fill_workflow(image_name: str, mask_name: str, prompt: str, seed: int, steps: int,
                         width: int, height: int, models: dict, ref_name: str | None = None,
                         extra_refs: list[str] = (), denoise: float = 1.0) -> dict:
-    """Generate only inside the mask. The reference shown to Klein is `ref_name` (the real picture
-    only) when given: Klein is an edit model and copies its reference, so a reference that contains
-    the blurry pre-fill gets the blur copied into the result."""
+    """Generate only inside the mask. The reference shown to the model is `ref_name` (the real picture
+    only) when given: an edit model copies its reference, so a reference that contains the blurry
+    pre-fill gets the blur copied into the result."""
     wf = _loaders(models)
+    image = _load(wf, "image", image_name)
     wf.update({
-        "image": {"class_type": "LoadImage", "inputs": {"image": image_name}},
         "mask": {"class_type": "LoadImageMask", "inputs": {"image": mask_name, "channel": "red"}},
-        "encode": {"class_type": "VAEEncode", "inputs": {"pixels": ["image", 0], "vae": ["vae", 0]}},
-        "text": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt or DEFAULT_PROMPT, "clip": ["clip", 0]}},
-        "ref": {"class_type": "ReferenceLatent",
-                "inputs": {"conditioning": ["text", 0], "latent": ["ref_encode" if ref_name else "encode", 0]}},
+        "encode": {"class_type": "VAEEncode", "inputs": {"pixels": image, "vae": ["vae", 0]}},
         "masked": {"class_type": "SetLatentNoiseMask", "inputs": {"samples": ["encode", 0], "mask": ["mask", 0]}},
         "sigmas": _schedule(wf, models, steps, width, height),
     })
-    if ref_name:
-        wf["ref_image"] = {"class_type": "LoadImage", "inputs": {"image": ref_name}}
-        wf["ref_encode"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["ref_image", 0], "vae": ["vae", 0]}}
-    wf.update(_sampling(["masked", 0], _add_references(wf, ["ref", 0], list(extra_refs)), seed,
-                        _sigmas(wf, denoise), "genfill", _model_ref(wf)))
-    return wf
+    first = {"pixels": _load(wf, "ref_image", ref_name)} if ref_name else {"pixels": image, "latent": ["encode", 0]}
+    conditioning = _condition(wf, models, prompt or DEFAULT_PROMPT, [first] + _extras(wf, extra_refs))
+    wf.update(_sampling(["masked", 0], conditioning, seed, _sigmas(wf, denoise), "genfill", _model_ref(wf)))
+    return _finish(wf)
 
 
 def build_edit_workflow(image_name: str, prompt: str, seed: int, steps: int,
                         width: int, height: int, models: dict, extra_refs: list[str] = (),
                         denoise: float = 1.0, self_reference: bool = True) -> dict:
-    """Instruction edit of the whole picture ("make it night", "change the jacket to red"): Klein
+    """Instruction edit of the whole picture ("make it night", "change the jacket to red"): an edit model
     redraws the image from full noise while following its reference, so what the prompt doesn't
     mention stays the same. `self_reference=False` (with denoise < 1): a plain partial redraw that does
-    not show the picture as a reference, so Klein doesn't copy its blur (Fix faces); `extra_refs` are
-    then image 1, 2…"""
+    not show the picture as a reference, so it doesn't copy its blur (Fix faces); `extra_refs` are
+    then image 1, 2…. A text-to-image model can't follow a reference: it redraws partly instead."""
+    fam = family(models.get("family"))
     wf = _loaders(models)
+    image = _load(wf, "image", image_name)
     wf.update({
-        "image": {"class_type": "LoadImage", "inputs": {"image": image_name}},
-        "encode": {"class_type": "VAEEncode", "inputs": {"pixels": ["image", 0], "vae": ["vae", 0]}},
-        "text": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["clip", 0]}},
+        "encode": {"class_type": "VAEEncode", "inputs": {"pixels": image, "vae": ["vae", 0]}},
         "sigmas": _schedule(wf, models, steps, width, height),
     })
-    if self_reference:
-        wf["ref"] = {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["text", 0], "latent": ["encode", 0]}}
-        conditioning = _add_references(wf, ["ref", 0], list(extra_refs))
-    else:
-        conditioning = _add_references(wf, ["text", 0], list(extra_refs), first=1)
-    wf.update(_sampling(["encode", 0], conditioning, seed, _sigmas(wf, denoise), "genfill_edit", _model_ref(wf)))
-    return wf
+    refs = ([{"pixels": image, "latent": ["encode", 0]}] if self_reference else []) + _extras(wf, extra_refs)
+    if fam.encoder == "text":
+        denoise = min(denoise, fam.redraw)
+    wf.update(_sampling(["encode", 0], _condition(wf, models, prompt, refs), seed, _sigmas(wf, denoise),
+                        "genfill_edit", _model_ref(wf)))
+    return _finish(wf)
 
 
 def build_create_workflow(prompt: str, seed: int, steps: int, width: int, height: int, models: dict,
                           extra_refs: list[str] = ()) -> dict:
     """A new picture from the prompt alone (text to image); `extra_refs` are pictures it may take an
-    object or a style from (Klein calls the first one "image 1" here)."""
+    object or a style from (the first one is "image 1" here)."""
+    fam = family(models.get("family"))
     wf = _loaders(models)
     wf.update({
-        "text": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["clip", 0]}},
-        "latent": {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": width, "height": height,
-                                                                     "batch_size": 1}},
+        "latent": {"class_type": "EmptyFlux2LatentImage" if fam.encoder == "flux" else "EmptyLatentImage",
+                   "inputs": {"width": width, "height": height, "batch_size": 1}},
         "sigmas": _schedule(wf, models, steps, width, height),
     })
-    conditioning = ["text", 0]
-    for i, name in enumerate(extra_refs, 1):
-        wf[f"extra{i}_image"] = {"class_type": "LoadImage", "inputs": {"image": name}}
-        wf[f"extra{i}_encode"] = {"class_type": "VAEEncode",
-                                  "inputs": {"pixels": [f"extra{i}_image", 0], "vae": ["vae", 0]}}
-        wf[f"extra{i}_ref"] = {"class_type": "ReferenceLatent",
-                               "inputs": {"conditioning": conditioning, "latent": [f"extra{i}_encode", 0]}}
-        conditioning = [f"extra{i}_ref", 0]
+    conditioning = _condition(wf, models, prompt, _extras(wf, extra_refs))
     wf.update(_sampling(["latent", 0], conditioning, seed, ["sigmas", 0], "genfill_create", _model_ref(wf)))
-    return wf
+    return _finish(wf)
 
 
 UPSCALE_PROMPT = ("Same photo, same composition and colours, crisp high-resolution detail, sharp textures, "
@@ -190,28 +211,26 @@ def build_refine_workflow(image_name: str, prompt: str, seed: int, steps: int, d
                           width: int, height: int, models: dict, upscale_model: str | None = None) -> dict:
     """Low-strength re-draw of one tile: adds natural texture, keeps content. With `upscale_model` the
     image is the small original tile, enlarged here by that model (real, crisp edges) to width×height
-    first; without it, the image is already enlarged (soft, and Klein copies what it is shown)."""
+    first; without it, the image is already enlarged (soft, and an edit model copies what it is shown)."""
     wf = _loaders(models)
-    pixels = ["image", 0]
+    pixels = _load(wf, "image", image_name)
     if upscale_model:
         wf["up_model"] = {"class_type": "UpscaleModelLoader", "inputs": {"model_name": upscale_model}}
         wf["up"] = {"class_type": "ImageUpscaleWithModel",
-                    "inputs": {"upscale_model": ["up_model", 0], "image": ["image", 0]}}
+                    "inputs": {"upscale_model": ["up_model", 0], "image": pixels}}
         wf["up_size"] = {"class_type": "ImageScale", "inputs": {"image": ["up", 0], "upscale_method": "lanczos",
                                                                 "width": width, "height": height,
                                                                 "crop": "disabled"}}
         pixels = ["up_size", 0]
     wf.update({
-        "image": {"class_type": "LoadImage", "inputs": {"image": image_name}},
         "encode": {"class_type": "VAEEncode", "inputs": {"pixels": pixels, "vae": ["vae", 0]}},
-        "text": {"class_type": "CLIPTextEncode",
-                 "inputs": {"text": f"{UPSCALE_PROMPT} {prompt}".strip(), "clip": ["clip", 0]}},
-        "ref": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["text", 0], "latent": ["encode", 0]}},
         "sched": _schedule(wf, models, steps, width, height),
         "split": {"class_type": "SplitSigmasDenoise", "inputs": {"sigmas": ["sched", 0], "denoise": denoise}},
     })
-    wf.update(_sampling(["encode", 0], ["ref", 0], seed, ["split", 1], "genfill_up", _model_ref(wf)))
-    return wf
+    conditioning = _condition(wf, models, f"{UPSCALE_PROMPT} {prompt}".strip(),
+                              [{"pixels": pixels, "latent": ["encode", 0]}])
+    wf.update(_sampling(["encode", 0], conditioning, seed, ["split", 1], "genfill_up", _model_ref(wf)))
+    return _finish(wf)
 
 
 SEEDVR_MODEL = "seedvr2_7b_int8_convrot.safetensors"
