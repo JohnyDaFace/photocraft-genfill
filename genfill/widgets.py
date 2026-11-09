@@ -181,6 +181,30 @@ def screen_area(win: tk.Misc) -> tuple[int, int, int, int]:
     return 0, 0, win.winfo_screenwidth(), win.winfo_screenheight()
 
 
+def monitor_area(win: tk.Misc) -> tuple[int, int, int, int]:
+    """(x, y, width, height) of the work area (no taskbar) of the monitor `win` is on."""
+    if sys.platform == "win32":
+        try:
+            class RECT(ctypes.Structure):
+                _fields_ = [("l", ctypes.c_long), ("t", ctypes.c_long), ("r", ctypes.c_long), ("b", ctypes.c_long)]
+
+            class MONITORINFO(ctypes.Structure):
+                _fields_ = [("size", ctypes.c_ulong), ("monitor", RECT), ("work", RECT), ("flags", ctypes.c_ulong)]
+
+            u = ctypes.windll.user32
+            u.MonitorFromWindow.restype = ctypes.c_void_p
+            u.MonitorFromWindow.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+            u.GetMonitorInfoW.argtypes = [ctypes.c_void_p, ctypes.POINTER(MONITORINFO)]
+            info = MONITORINFO()
+            info.size = ctypes.sizeof(MONITORINFO)
+            if u.GetMonitorInfoW(u.MonitorFromWindow(_hwnd(win), 2), ctypes.byref(info)):  # 2: nearest
+                r = info.work
+                return r.l, r.t, r.r - r.l, r.b - r.t
+        except (AttributeError, OSError):
+            pass
+    return 0, 0, win.winfo_screenwidth(), win.winfo_screenheight()
+
+
 # -- buttons ----------------------------------------------------------------------------------------
 
 class BarButton(tk.Canvas):

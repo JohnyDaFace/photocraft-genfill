@@ -196,7 +196,7 @@ def test_clicking_the_style_that_is_on_turns_it_off():
 
 def test_style_tiles_fit_the_screen():
     from genfill.style_panel import CHROME_H, GAP, LABEL_H, TILE_MAX, TILE_MIN, grid_size
-    assert grid_size(980, 1000, 25) == (TILE_MAX, 7)        # plenty of room: full size, as many as fit a row
+    assert grid_size(1360, 1000, 25) == (TILE_MAX, 9)       # plenty of room: full size, as many as fit a row
     side, cols = grid_size(980, 600, 25)                     # a short screen: smaller tiles, more to a row
     assert TILE_MIN <= side < TILE_MAX and -(-25 // cols) * (side + LABEL_H + GAP) <= 600 - CHROME_H
     assert grid_size(600, 300, 40)[0] == TILE_MIN            # never smaller than TILE_MIN

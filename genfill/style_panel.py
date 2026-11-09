@@ -13,13 +13,14 @@ from PIL import Image, ImageDraw, ImageTk
 
 from . import style_thumbs, styles
 from .dpi import px
-from .widgets import BarButton, round_corners, screen_area
+from .widgets import BarButton, monitor_area, round_corners
 
 GAP = 8
-TILE_MAX = 120     # thumbnails are at most this big…
+TILE_MAX = 140     # thumbnails are at most this big…
 TILE_MIN = 72      # …and shrink down to this so the biggest tab fits on the screen
 LABEL_H = 38       # a tile's name under it (two lines) and the highlight border
 CHROME_H = 150     # the panel around the tiles: summary, tabs, footer, padding
+WIDE_MAX = 1360    # the panel may be wider than the bar, up to this (and the monitor's width)
 BUILT_IN = {n for n, _ in styles.DEFAULT_STYLES}
 ANGLES_TAB = "Angles"
 
@@ -74,9 +75,10 @@ class StylePanel(tk.Toplevel):
         self._photos, self.tiles, self.cells = [], {}, []
         every = styles.load()
         tabs = [(t, g) for t, g in groups(every) if t != ANGLES_TAB or on_angle is not None]
-        sx, sy, sw, sh = screen_area(bar)
+        sx, sy, sw, sh = monitor_area(bar)
         top, bottom = bar.winfo_rooty(), bar.winfo_rooty() + bar.winfo_height()
         room = max(top - sy, sy + sh - bottom) - px(12)  # the panel opens below the bar, or above it if more room
+        width = max(width, min(sw - px(24), px(WIDE_MAX)))  # wider rows: bigger tiles on a short screen
         self.side, cols = grid_size(width, room, max(len(g) for _, g in tabs))
         # what is picked, both parts: a look and an angle are used together
         summary = tk.Frame(body, bg=p.chrome)
@@ -128,8 +130,8 @@ class StylePanel(tk.Toplevel):
         self._refresh()
 
         self.update_idletasks()
-        sx, sy, sw, sh = screen_area(self)
-        x = bar.winfo_rootx()
+        sx, sy, sw, sh = monitor_area(bar)
+        x = bar.winfo_rootx() + (bar.winfo_width() - self.winfo_width()) // 2  # centred under the bar
         y = bar.winfo_rooty() + bar.winfo_height() + px(6)
         if y + self.winfo_height() > sy + sh:
             y = bar.winfo_rooty() - self.winfo_height() - px(6)
