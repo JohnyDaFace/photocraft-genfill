@@ -189,7 +189,7 @@ def _candidates(job: Job, settings: Settings, status: Status, progress: Progress
     else:
         ww, wh = imaging.working_size(src.width, src.height, settings.megapixels)
     fam = family(settings.model_family)
-    if edit and fam.encoder == "text":
+    if edit and not job.create and fam.encoder == "text":  # Create (and its Similar) is fine
         raise UserFacingError(f"{fam.label.split(' (')[0]} can only make new pictures, not edit one. "
                               "Select an area to fill, or pick another image model in Settings.")
     status("Sending to ComfyUI…")
@@ -209,7 +209,8 @@ def _candidates(job: Job, settings: Settings, status: Status, progress: Progress
             raise UserFacingError("Cancelled.")
         what = "Creating" if job.create else "Editing the image" if edit else "Generating"
         status(f"{what} with {fam.label.split(' (')[0]}" +(f" ({i + 1} of {count})" if count > 1 else "") + "…"
-               + (" (first run loads the model)" if i == 0 else ""))
+               + (" (first run loads the model)" if i == 0 else "")
+               + (" It can't see pictures, so the reference is left out." if refs and fam.encoder == "text" else ""))
         if count > 1:
             progress(i / count)
         seed = random.randint(0, 2**32 - 1)

@@ -64,6 +64,8 @@ class FakeComfy:
         self.seeds.append(wf["noise"]["inputs"]["noise_seed"])
         self.kinds.append("fill" if "mask" in wf else "edit" if "sigmas" in wf else "upscale")
         w = wf["sched" if "sched" in wf else "sigmas"]["inputs"]
+        if "width" not in w:  # a model with its own schedule: the size is on the empty picture
+            w = wf["latent"]["inputs"]
         return Image.new("RGB", (w["width"], w["height"]), (0, 255, 0))
 
 
@@ -718,6 +720,17 @@ def test_create_makes_new_pictures_and_opens_the_chosen_one(tmp_path):
     msg = place(results, 1, _settings(tmp_path), pc=pc)
     assert msg.startswith("Created 1288×1610") and len(pc.opened) == 1 and not pc.placed
     assert Image.open(tmp_path / pc.opened[0]).size == (1288, 1610)
+
+
+def test_create_works_on_a_create_only_model_and_says_the_reference_is_left_out(tmp_path):
+    from genfill.pipeline import create
+    s = _settings(tmp_path)
+    s.switch_family("krea2")
+    said, comfy = [], FakeComfy()
+    results = create("16:9", "a girl on a balcony", s, said.append, lambda f: None, threading.Event(), comfy=comfy,
+                     count=1, reference=Image.new("RGB", (64, 64)))
+    assert comfy.runs == 1 and results.new_document
+    assert any("Krea 2 Turbo" in m and "reference is left out" in m for m in said)
 
 
 def test_create_needs_a_prompt(tmp_path):
