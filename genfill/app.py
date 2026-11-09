@@ -758,6 +758,14 @@ class App:
                 pc, last = None, None
                 self.events.put(("photocraft", False))
                 time.sleep(3)
+            except Exception:  # anything unexpected: reconnect, never stop watching, or the bar stays stuck
+                try:
+                    if pc is not None:
+                        pc.__exit__(None, None, None)
+                except Exception:
+                    pass
+                pc, last, last_layer = None, None, None
+                time.sleep(3)
 
     def start(self, job: str, choice: str | None = None, factor: int | None = None, what: str = "",
               label: str | None = None, preset: str | None = None) -> None:
