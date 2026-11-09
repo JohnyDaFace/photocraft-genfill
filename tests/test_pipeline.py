@@ -916,3 +916,46 @@ def test_reflection_presets_run_without_the_users_loras(tmp_path):
              name="Relight: night")
     lora_nodes = [[n for n in wf.values() if "lora" in str(n.get("class_type", "")).lower()] for wf in comfy.wfs]
     assert lora_nodes[0] == [] and lora_nodes[1] != []
+
+
+# -- sketch to image ---------------------------------------------------------------------------------------
+class SketchPC(SegPC):
+    """The active layer is a sketch with `bounds` (None: an empty layer)."""
+    def __init__(self, doc, bounds, exchange, name="Layer 1", visible=True):
+        super().__init__(doc, None, exchange)
+        self.row = {"id": 7, "name": name, "kind": "Pixel", "visible": visible, "bounds": bounds}
+
+    def active_layer_info(self): return self.row
+
+
+def _sketch(pc, tmp_path, prompt="a red vintage car"):
+    from genfill.pipeline import sketch_to_image
+    return sketch_to_image(prompt, _settings(tmp_path), lambda s: None, lambda f: None, threading.Event(),
+                           pc=pc, comfy=FakeComfy(), count=1)
+
+
+def test_sketch_area_adds_a_margin_inside_the_picture():
+    from genfill.pipeline import sketch_area
+    assert sketch_area((100, 400, 600, 700), (1080, 1920)) == (40, 340, 660, 760)
+    assert sketch_area((0, 0, 50, 50), (1080, 1920)) == (0, 0, 74, 74)
+
+
+def test_a_sketch_is_redrawn_in_the_area_around_it(tmp_path):
+    pc = SketchPC(_doc(), (100, 400, 600, 700), tmp_path)
+    r = _sketch(pc, tmp_path)
+    assert pc.selected and pc.selection == (40, 340, 660, 760)
+    assert r.masked and r.layer == "Generative Fill – Sketch – a red vintage car"
+    assert "sketch" in r.job.prompt and "a red vintage car" in r.job.prompt
+
+
+@pytest.mark.parametrize("bounds, name, visible, says", [
+    (None, "Layer 1", True, "The active layer is empty"),
+    ((0, 0, 1080, 1920), "Layer 1", True, "looks like the photo"),
+    ((100, 400, 600, 700), "Background", True, "looks like the photo"),
+    ((100, 400, 600, 700), "Layer 1", False, "is hidden"),
+])
+def test_no_sketch_says_how_to_make_one(tmp_path, bounds, name, visible, says):
+    pc = SketchPC(_doc(), bounds, tmp_path, name, visible)
+    with pytest.raises(UserFacingError, match=says):
+        _sketch(pc, tmp_path)
+    assert not pc.selected

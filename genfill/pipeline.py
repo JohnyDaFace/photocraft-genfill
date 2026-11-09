@@ -421,6 +421,59 @@ def _find_named(image: Image.Image, prompt: str, settings: Settings, status: Sta
     return None
 
 
+# -- sketch to image: rough strokes on a layer become real content --------------------------------------
+SKETCH_PROMPT = ("Turn the rough hand-drawn sketch in this area into {what}, as a real part of the photo. Follow the "
+                 "sketch's shape, size, position and colours, and match the photo's light, perspective, focus and "
+                 "grain. No drawn lines, outlines or scribbles remain.")
+SKETCH_PAD = 0.12      # the redrawn area reaches this far (of the sketch's longer side) around the strokes
+SKETCH_MIN_PAD = 24    # pixels
+SKETCH_MAX_COVER = 0.9  # a layer covering more of the picture than this is a photo, not a sketch
+SKETCH_HOW = ("draw on a new empty layer (Layer › New › Layer), keep it the active layer, type what it is, then "
+              "choose Create › From my sketch.")
+
+
+def sketch_area(bounds, size: tuple[int, int]) -> tuple[int, int, int, int]:
+    """The rectangle redrawn for a sketch with these pixel bounds: the strokes plus a margin, inside the picture."""
+    x0, y0, x1, y1 = (int(v) for v in bounds)
+    pad = max(SKETCH_MIN_PAD, round(max(x1 - x0, y1 - y0) * SKETCH_PAD))
+    return max(0, x0 - pad), max(0, y0 - pad), min(size[0], x1 + pad), min(size[1], y1 + pad)
+
+
+def sketch_to_image(prompt: str, settings: Settings, status: Status, progress: Progress, cancel, pc=None,
+                    comfy=None, count: int | None = None) -> Results:
+    """The active layer holds a rough drawing: select the area around it and redraw that area as real content
+    shaped like the drawing (the model sees the drawing in the picture). The sketch layer is left as it is,
+    under the result."""
+    pc, comfy = _clients(settings, pc, comfy)
+    what = prompt.strip()
+    try:
+        status("Reading the sketch layer from PhotoCraft…")
+        with pc:
+            problems = pc.compatibility()
+            if problems:
+                raise UserFacingError("This PhotoCraft version isn't compatible yet: " + " ".join(problems))
+            doc = pc.document()
+            layer = pc.active_layer_info()
+    except PhotoCraftError as e:
+        raise UserFacingError(str(e)) from e
+    if not layer or not layer.get("bounds"):
+        raise UserFacingError("The active layer is empty. To turn a sketch into a picture, " + SKETCH_HOW)
+    if not layer.get("visible", True):
+        raise UserFacingError("The sketch layer is hidden: show it (the eye in the Layers panel) and try again.")
+    x0, y0, x1, y1 = layer["bounds"]
+    if layer.get("name") == "Background" or (x1 - x0) * (y1 - y0) > SKETCH_MAX_COVER * doc.width * doc.height:
+        raise UserFacingError("The active layer looks like the photo, not a sketch. " + SKETCH_HOW[0].upper()
+                              + SKETCH_HOW[1:])
+    area = sketch_area(layer["bounds"], (doc.width, doc.height))
+    mask = Image.new("L", (doc.width, doc.height), 0)
+    ImageDraw.Draw(mask).rectangle((area[0], area[1], area[2] - 1, area[3] - 1), fill=255)
+    status("Selecting the sketch's area in PhotoCraft…")
+    _select(pc, settings, mask)
+    told = SKETCH_PROMPT.format(what=what if what else "what it shows, realistically")
+    return generate(told, settings, status, progress, cancel, pc=pc, comfy=comfy, count=count,
+                    name=f"Sketch – {what}" if what else "Sketch")
+
+
 def _reference_face(reference: Image.Image, settings: Settings, progress: Progress, cancel, comfy) -> Image.Image:
     """The biggest face in the reference picture with some surroundings (what the model copies from)."""
     rgb = reference.convert("RGB")

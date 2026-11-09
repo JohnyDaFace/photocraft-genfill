@@ -224,6 +224,17 @@ class PhotoCraftClient:
         rows = (self.execute(self._cmd("list layers"), {"flat": True}) or {}).get("layers") or []
         return {r.get("id") for r in rows}
 
+    def active_layer_info(self) -> dict | None:
+        """The active layer's row from the layer list: id, name, kind, visible, bounds ((x0, y0, x1, y1) of
+        its pixels; None when it is empty)."""
+        r = self.execute(self._cmd("list layers"), {"flat": True}) or {}
+        act = r.get("activeLayer")
+        row = next((dict(row) for row in r.get("layers") or [] if row.get("id") == act), None)
+        if row and row.get("bounds"):  # PhotoCraft reports [x, y, width, height]
+            x, y, w, h = (int(v) for v in row["bounds"])
+            row["bounds"] = (x, y, x + w, y + h)
+        return row
+
     def layer_metadata(self, layer: int | None = None) -> str | None:
         """The layer's XMP packet (None: none, or this PhotoCraft can't store one)."""
         try:

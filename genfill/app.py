@@ -27,7 +27,7 @@ from .picker import Picker
 from .style_panel import StylePanel
 from .pipeline import (CREATE_CHOICES, EXPAND_CHOICES, FIND, MAX_VARIATIONS, UserFacingError, create, create_size,
                        SWAP_GONE, enhance, expand, fix_faces, generate, load_reference, place, remove_background,
-                       remove_things, results_for_layer, run_upscale, select_things, similar, swap)
+                       remove_things, results_for_layer, run_upscale, select_things, similar, sketch_to_image, swap)
 from .settings import SETTINGS_FILE, Settings
 from .settings_dialog import SettingsDialog
 from .widgets import (BarButton, PopupMenu, Tooltip, minimize, round_corners, screen_area, shape_image,
@@ -593,6 +593,8 @@ class App:
         items += [("check", f"{c}  ({w}×{h})", lambda c=c: act(c), c == last)
                   for c in CREATE_CHOICES for w, h in [create_size(c, self.settings.megapixels)]]
         items += [("sep",), ("info", "Opens as a new document")]
+        if not pick_only:
+            items += [("sep",), ("item", "From my sketch (the active layer)", lambda: self.start("sketch"), "create")]
         self._menu(self.create_btn, items)
 
     def _set_create_choice(self, choice: str) -> None:
@@ -779,7 +781,7 @@ class App:
         if preset:  # a preset brings its own instruction; the box and the history stay as they are
             prompt = presets.prompt_for(preset) or ""
         else:
-            prompt = self.prompt.get() if job in ("fill", "remove", "create") else ""  # the prompt belongs to Generate
+            prompt = self.prompt.get() if job in ("fill", "remove", "create", "sketch") else ""  # the prompt belongs to Generate
         if what and not label and job != "photoshoot":
             self.settings.remember_prompt(what)  # typed words used to find things go in the history too
         if job == "upscale":
@@ -847,6 +849,10 @@ class App:
                 return self._offer(create(shape, prompt_, settings, status, progress, cancel, reference=ref),
                                    settings, status)
             self.say(f"Creating a {shape} picture…", None)
+        elif job == "sketch":
+            def fn(prompt_, settings, status, progress, cancel):
+                return self._offer(sketch_to_image(prompt_, settings, status, progress, cancel), settings, status)
+            self.say("Turning the sketch into a picture…", None)
         elif job == "upscale":
             fn = run_upscale
             self.say(f"Upscaling {self.settings.upscale_factor}×…", None)

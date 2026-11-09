@@ -28,6 +28,10 @@ FLUX.2 [klein]:
   "the cars" all of them. If it isn't found, the whole image is edited. A style left on is not used for these.
 - **Create ▾** makes a new picture from just the prompt (text to image, 1:1, 4:5, 16:9…) and opens it as a new
   document. With no document open, the bar offers only this: pick the shape, type, click **Create**.
+- **Sketch to image** (Create ▾ › From my sketch): draw roughly on a new empty layer (a few coloured shapes and
+  lines are enough), keep that layer active, type what it is ("a potted olive tree"), and choose it. The area
+  around your strokes is redrawn as the real thing, with your sketch's shape, place and colours and the photo's
+  light. The result is a new layer above the sketch layer, which is left as it was.
 - **Photoshoot** (the camera icon) turns one photo of a product or a person into a whole shoot: 8 shots on
   the same set, in the same light, from different angles and poses, opened as layers in a new document.
   **Reshoot** redoes any one shot.
