@@ -293,6 +293,21 @@ ANGLES = [
     ("Fisheye", "Ultra-wide fisheye lens shot from up close, strongly curved edges, energetic action-sports feel."),
     ("Drone aerial", "Aerial drone photograph from high above at an angle, showing the subject and its "
                      "surroundings from the sky."),
+    ("Eye level", "Shot straight on at eye level, the camera at the subject's height, natural and direct."),
+    ("Three-quarter", "Shot from a three-quarter angle, the subject turned partly away from the camera, showing "
+                      "both its front and one side."),
+    ("Over the shoulder", "Over-the-shoulder shot from just behind one person, their shoulder and the back of "
+                          "their head blurred in the foreground, looking at what they see."),
+    ("Point of view", "First-person point-of-view shot, as seen through the eyes of someone in the scene, their "
+                      "hands visible at the bottom of the frame."),
+    ("Medium shot", "Medium shot framing the subject from the waist up, with some of the place around them."),
+    ("Full body", "Full-length shot showing the whole subject from head to toe, with space above and below."),
+    ("Extreme close-up", "Extreme close-up of one detail, filling the whole frame, tiny textures sharp and "
+                         "everything else out of frame."),
+    ("Telephoto", "Shot from far away with a long telephoto lens: compressed perspective, the background large "
+                  "and close behind the subject, very soft background blur."),
+    ("Through the frame", "Shot through something in the foreground, a doorway, leaves or a window frame, that "
+                          "frames the subject and is softly out of focus."),
 ]
 KEEP_ANGLE = "Keep the same people, faces, clothes, objects and place, seen from this new camera angle."
 

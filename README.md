@@ -261,8 +261,9 @@ versions that keep its layout and vary the details; the one you picked stays as 
 - **Design**: Art Deco, Art Nouveau, Bauhaus, Minimalist, Vintage poster: graphic looks from design movements.
 - **Eras**: Victorian, 1920s, 1950s, 1970s, Retro-futurism, Future: the clothes, the setting and the photography of the time.
 
-- **Angles**: Low angle, High angle, Bird's-eye, Worm's-eye, Dutch tilt, Close-up, Side profile, From behind,
-  Wide shot, Fisheye, Drone aerial. An angle is chosen on its own and **adds to the style**: the bar shows both,
+- **Angles** (20): Low angle, High angle, Bird's-eye, Worm's-eye, Dutch tilt, Close-up, Side profile, From behind,
+  Wide shot, Fisheye, Drone aerial, Eye level, Three-quarter, Over the shoulder, Point of view, Medium shot, Full body,
+  Extreme close-up, Telephoto, Through the frame. An angle is chosen on its own and **adds to the style**: the bar shows both,
   for example *Cinematic · Low angle*. On a photo with nothing typed it shows the same people and place from the
   new angle (with Studio white the bottle turns, it doesn't become a straight top-down shot).
 
