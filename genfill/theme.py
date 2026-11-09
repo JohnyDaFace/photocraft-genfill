@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from tkinter import font as tkfont
 from tkinter import ttk
 
+from .dpi import px
+
 
 @dataclass(frozen=True)
 class Palette:
@@ -50,9 +52,9 @@ def fonts(root: tk.Misc) -> dict[str, tkfont.Font]:
     fallback = {"win32": "Segoe UI", "darwin": ".AppleSystemUIFont"}.get(sys.platform, "TkDefaultFont")
     family = "Inter" if "Inter" in families else fallback
     return {
-        "body": tkfont.Font(root, family=family, size=-12),
-        "small": tkfont.Font(root, family=family, size=-11),
-        "button": tkfont.Font(root, family=family, size=-12, weight="bold"),
+        "body": tkfont.Font(root, family=family, size=-px(12)),
+        "small": tkfont.Font(root, family=family, size=-px(11)),
+        "button": tkfont.Font(root, family=family, size=-px(12), weight="bold"),
     }
 
 
@@ -61,11 +63,11 @@ def style_ttk(root: tk.Misc, p: Palette, f: dict) -> None:
     s.theme_use("clam")
     s.configure(".", background=p.chrome, foreground=p.text, font=f["body"])
     s.configure("PC.TEntry", fieldbackground=p.field, foreground=p.text, bordercolor=p.field_border,
-                lightcolor=p.field_border, darkcolor=p.field_border, insertcolor=p.text, padding=(6, 4))
+                lightcolor=p.field_border, darkcolor=p.field_border, insertcolor=p.text, padding=(px(6), px(4)))
     s.map("PC.TEntry", bordercolor=[("focus", p.accent)], lightcolor=[("focus", p.accent)])
     s.configure("PC.TCombobox", fieldbackground=p.field, background=p.field, foreground=p.text,
                 bordercolor=p.field_border, lightcolor=p.field_border, darkcolor=p.field_border,
-                arrowcolor=p.text_dim, padding=(6, 3))
+                arrowcolor=p.text_dim, padding=(px(6), px(3)))
     s.map("PC.TCombobox", fieldbackground=[("readonly", p.field)], foreground=[("readonly", p.text)],
           background=[("active", p.hover)], selectbackground=[("readonly", p.field)],
           selectforeground=[("readonly", p.text)])
@@ -75,7 +77,7 @@ def style_ttk(root: tk.Misc, p: Palette, f: dict) -> None:
     root.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
     root.option_add("*TCombobox*Listbox.font", f["body"])
     s.configure("PC.Horizontal.TProgressbar", troughcolor=p.field, background=p.accent, bordercolor=p.chrome,
-                lightcolor=p.accent, darkcolor=p.accent, thickness=4)
+                lightcolor=p.accent, darkcolor=p.accent, thickness=px(4))
 
 
 def title_bar(root: tk.Tk, p: Palette) -> None:
@@ -115,7 +117,8 @@ class PillButton(tk.Canvas):
     def __init__(self, master, text: str, command, palette: Palette, font: tkfont.Font,
                  kind: str = "secondary", height: int = 26, min_width: int = 72):
         self.text, self.command, self.p, self.font, self.kind = text, command, palette, font, kind
-        width = max(min_width, font.measure(text) + 28)
+        height, min_width = px(height), px(min_width)
+        width = max(min_width, font.measure(text) + px(28))
         super().__init__(master, width=width, height=height, highlightthickness=0, bd=0,
                          bg=palette.chrome, cursor="hand2")
         self._state, self._enabled = "normal", True

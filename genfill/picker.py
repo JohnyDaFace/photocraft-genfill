@@ -8,6 +8,7 @@ from typing import Callable
 from PIL import ImageTk
 
 from . import theme
+from .dpi import px
 from .pipeline import Results
 
 
@@ -18,7 +19,7 @@ class Picker(tk.Toplevel):
     def __init__(self, master: tk.Misc, results: Results, p: theme.Palette, fonts: dict,
                  on_pick: Callable[[int], None], on_discard: Callable[[], None],
                  on_similar: Callable[[int], None] | None = None, on_close: Callable[[], None] | None = None):
-        super().__init__(master, bg=p.chrome, padx=14, pady=12)
+        super().__init__(master, bg=p.chrome, padx=px(14), pady=px(12))
         self.title("Choose a result")
         self.attributes("-topmost", True)
         self.resizable(False, False)
@@ -31,19 +32,19 @@ class Picker(tk.Toplevel):
         self._photos = [ImageTk.PhotoImage(im) for im in results.previews]  # keep references alive
 
         self.hint = tk.Label(self, bg=p.chrome, fg=p.text_dim, font=fonts["small"], justify="left")
-        self.hint.grid(row=0, column=0, columnspan=len(self._photos), sticky="w", pady=(0, 10))
+        self.hint.grid(row=0, column=0, columnspan=len(self._photos), sticky="w", pady=(0, px(10)))
         self.cells, self.tags = [], []
         for i, photo in enumerate(self._photos):
-            cell = tk.Frame(self, bg=p.chrome, highlightthickness=2, highlightbackground=p.chrome,
+            cell = tk.Frame(self, bg=p.chrome, highlightthickness=px(2), highlightbackground=p.chrome,
                             highlightcolor=p.accent, cursor="hand2")
-            cell.grid(row=1, column=i, padx=4, sticky="n")
+            cell.grid(row=1, column=i, padx=px(4), sticky="n")
             img = tk.Label(cell, image=photo, bg=p.chrome, bd=0)
             img.pack()
             tag = tk.Label(cell, text=str(i + 1), bg=p.chrome, fg=p.text_dim, font=fonts["small"])
-            tag.pack(pady=(4, 2))
+            tag.pack(pady=(px(4), px(2)))
             if on_similar:
                 theme.PillButton(cell, "More like this", lambda i=i: self._similar(i), p, fonts["small"],
-                                 kind="quiet", height=22).pack(pady=(0, 2))
+                                 kind="quiet", height=22).pack(pady=(0, px(2)))
             for w in (cell, img):
                 w.bind("<Button-1>", lambda e, i=i: self._pick(i))
                 w.bind("<Enter>", lambda e, i=i: self._ring(i, hover=True))
@@ -53,7 +54,7 @@ class Picker(tk.Toplevel):
             self.tags.append(tag)
 
         self.bottom = tk.Frame(self, bg=p.chrome)
-        self.bottom.grid(row=2, column=0, columnspan=len(self._photos), sticky="e", pady=(10, 0))
+        self.bottom.grid(row=2, column=0, columnspan=len(self._photos), sticky="e", pady=(px(10), 0))
         self.close_btn = None
         self.protocol("WM_DELETE_WINDOW", self.close)
         self.bind("<Escape>", lambda e: self.close())

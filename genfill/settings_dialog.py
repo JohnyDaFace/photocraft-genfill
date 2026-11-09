@@ -8,6 +8,7 @@ from tkinter import messagebox, ttk
 
 from . import __version__, setup_env, theme
 from .comfy import MODEL_SLOTS, ComfyClient, ComfyError
+from .dpi import px
 from .compat import run_checks
 from .settings import Settings, find_photocraft_cli
 
@@ -23,11 +24,11 @@ class SettingsDialog(tk.Toplevel):
         self.configure(bg=palette.chrome)
         self.attributes("-topmost", True)
         self.resizable(True, False)
-        self.minsize(520, 0)
+        self.minsize(px(520), 0)
         self.transient(master)
         theme.title_bar(self, palette)
         p, f = palette, fonts
-        fr = tk.Frame(self, bg=p.chrome, padx=16, pady=14)
+        fr = tk.Frame(self, bg=p.chrome, padx=px(16), pady=px(14))
         fr.pack(fill="both", expand=True)
         fr.columnconfigure(1, weight=1)
         self.vars: dict[str, tk.StringVar] = {}
@@ -35,27 +36,27 @@ class SettingsDialog(tk.Toplevel):
 
         def label(text, r, dim=False):
             tk.Label(fr, text=text, bg=p.chrome, fg=p.text_faint if dim else p.text_dim, font=f["small"]).grid(
-                row=r, column=0, sticky="w", padx=(0, 12), pady=4)
+                row=r, column=0, sticky="w", padx=(0, px(12)), pady=px(4))
 
         def heading(text, r):
             tk.Label(fr, text=text, bg=p.chrome, fg=p.text, font=f["button"]).grid(
-                row=r, column=0, columnspan=3, sticky="w", pady=(10 if r else 0, 4))
+                row=r, column=0, columnspan=3, sticky="w", pady=(px(10) if r else 0, px(4)))
 
         def entry(key, value, r, width=None):
             v = self.vars[key] = tk.StringVar(value=str(value))
             ttk.Entry(fr, textvariable=v, style="PC.TEntry", font=f["body"], width=width).grid(
-                row=r, column=1, sticky="ew", pady=4)
+                row=r, column=1, sticky="ew", pady=px(4))
 
         heading("ComfyUI", row); row += 1
         label("Address", row); entry("comfy_url", settings.comfy_url, row)
         theme.PillButton(fr, "Test", self.test_comfy, p, f["small"], height=24, min_width=60).grid(
-            row=row, column=2, padx=(8, 0)); row += 1
+            row=row, column=2, padx=(px(8), 0)); row += 1
         self.combos = {}
         for slot in MODEL_SLOTS:
             label(LABELS[slot], row)
             v = self.vars[slot] = tk.StringVar(value=settings.models.get(slot, ""))
             cb = ttk.Combobox(fr, textvariable=v, style="PC.TCombobox", font=f["body"])
-            cb.grid(row=row, column=1, columnspan=2, sticky="ew", pady=4)
+            cb.grid(row=row, column=1, columnspan=2, sticky="ew", pady=px(4))
             self.combos[slot] = cb
             row += 1
 
@@ -80,20 +81,20 @@ class SettingsDialog(tk.Toplevel):
 
         self.msg = tk.StringVar()
         tk.Label(fr, textvariable=self.msg, bg=p.chrome, fg=p.text_dim, font=f["small"], justify="left",
-                 anchor="w", wraplength=480).grid(row=row, column=0, columnspan=3, sticky="ew", pady=(10, 0))
+                 anchor="w", wraplength=px(480)).grid(row=row, column=0, columnspan=3, sticky="ew", pady=(px(10), 0))
         row += 1
-        tk.Frame(fr, bg=p.separator, height=1).grid(row=row, column=0, columnspan=3, sticky="ew", pady=10); row += 1
+        tk.Frame(fr, bg=p.separator, height=1).grid(row=row, column=0, columnspan=3, sticky="ew", pady=px(10)); row += 1
         bottom = tk.Frame(fr, bg=p.chrome)
         bottom.grid(row=row, column=0, columnspan=3, sticky="ew")
         theme.PillButton(bottom, "Check compatibility", self.check_compat, p, f["small"], kind="quiet",
                          height=24).pack(side="left")
         theme.PillButton(bottom, "Undo PhotoCraft setup", self.undo_setup, p, f["small"], kind="quiet",
-                         height=24).pack(side="left", padx=(4, 0))
+                         height=24).pack(side="left", padx=(px(4), 0))
         if on_restart:
             theme.PillButton(bottom, "Restart GenFill", lambda: (self.destroy(), on_restart()), p, f["small"],
-                             kind="quiet", height=24).pack(side="left", padx=(4, 0))
+                             kind="quiet", height=24).pack(side="left", padx=(px(4), 0))
         theme.PillButton(bottom, "Save", self.save, p, f["button"], kind="primary", min_width=80).pack(side="right")
-        theme.PillButton(bottom, "Cancel", self.destroy, p, f["button"], min_width=80).pack(side="right", padx=8)
+        theme.PillButton(bottom, "Cancel", self.destroy, p, f["button"], min_width=80).pack(side="right", padx=px(8))
         self.load_models()
 
     # -- ComfyUI ---------------------------------------------------------------------------------

@@ -11,6 +11,7 @@ from typing import Callable
 
 from PIL import Image, ImageDraw, ImageTk
 
+from .dpi import px
 from .theme import Palette
 
 SS = 4  # supersampling factor
@@ -189,6 +190,7 @@ class BarButton(tk.Canvas):
     def __init__(self, master, p: Palette, font, command: Callable | None = None, icon: str | None = None,
                  text: str = "", kind: str = "icon", chevron: bool = False, tooltip: str = "", height: int = 32,
                  bg: str | None = None):
+        height = px(height)
         super().__init__(master, height=height, highlightthickness=0, bd=0, bg=bg or p.chrome, cursor="hand2")
         self.p, self.font, self.command, self.kind = p, font, command, kind
         self.icon, self.text, self.chevron, self.h = icon, text, chevron, height
@@ -229,10 +231,10 @@ class BarButton(tk.Canvas):
     def _layout(self) -> None:
         tw = self.font.measure(self.text) if self.text else 0
         if self.kind == "icon" and not self.text:
-            w = self.h + (12 if self.chevron else 0)
+            w = self.h + px(12 if self.chevron else 0)
         else:
-            w = (12 if self.kind != "icon" else 6) + (18 if self.icon else 0) + (6 if self.icon and tw else 0) + tw \
-                + (14 if self.chevron else 0) + (14 if self.kind != "icon" else 8)
+            w = px(12 if self.kind != "icon" else 6) + px(18 if self.icon else 0) + px(6 if self.icon and tw else 0) \
+                + tw + px(14 if self.chevron else 0) + px(14 if self.kind != "icon" else 8)
         self.w = int(w)
         self.configure(width=self.w)
         self._draw()
@@ -265,28 +267,30 @@ class BarButton(tk.Canvas):
         self._imgs.clear()
         w, h = self.w, self.h
         fill, border, fg = self._colors()
-        radius = h / 2 if self.kind in ("primary", "outline") else 7
+        radius = h / 2 if self.kind in ("primary", "outline") else px(7)
+        icon, chev = px(18), px(12)
         if fill or border:
             bg = ImageTk.PhotoImage(shape_image(w, h, radius, fill, border))
             self._imgs.append(bg)
             self.create_image(0, 0, image=bg, anchor="nw")
-        x = 12 if self.kind != "icon" else 6
+        x = px(12 if self.kind != "icon" else 6)
         if self.kind == "icon" and not self.text:
-            x = (h - 18) / 2
+            x = (h - icon) / 2
         if self.icon:
-            ic = ImageTk.PhotoImage(icon_image(self.icon, 18, fg))
+            ic = ImageTk.PhotoImage(icon_image(self.icon, icon, fg))
             self._imgs.append(ic)
-            self.create_image(x, (h - 18) / 2, image=ic, anchor="nw")
-            x += 18 + (6 if self.text else 0)
+            self.create_image(x, (h - icon) / 2, image=ic, anchor="nw")
+            x += icon + px(6 if self.text else 0)
         if self.text:
             self.create_text(x, h / 2, text=self.text, fill=fg, font=self.font, anchor="w")
-            x += self.font.measure(self.text) + 2
+            x += self.font.measure(self.text) + px(2)
         if self.chevron:
-            ch = ImageTk.PhotoImage(icon_image("chev", 12, fg))
+            ch = ImageTk.PhotoImage(icon_image("chev", chev, fg))
             self._imgs.append(ch)
-            self.create_image(x + (1 if self.text else 0), (h - 12) / 2, image=ch, anchor="nw")
+            self.create_image(x + px(1 if self.text else 0), (h - chev) / 2, image=ch, anchor="nw")
         if self._badge:
-            self.create_oval(w - 11, h - 11, w - 4, h - 4, fill=self.p.accent, outline=self.p.chrome, width=1.5)
+            self.create_oval(w - px(11), h - px(11), w - px(4), h - px(4), fill=self.p.accent, outline=self.p.chrome,
+                             width=px(1.5))
 
 
 # -- tooltip -----------------------------------------------------------------------------------------
@@ -318,13 +322,13 @@ class Tooltip:
         tw.overrideredirect(True)
         tw.attributes("-topmost", True)
         bg, fg = (p.field, p.text) if p else ("#222", "#eee")
-        tk.Label(tw, text=self.text, bg=bg, fg=fg, font=getattr(self.widget, "font", None), padx=8, pady=4,
+        tk.Label(tw, text=self.text, bg=bg, fg=fg, font=getattr(self.widget, "font", None), padx=px(8), pady=px(4),
                  bd=0, highlightthickness=1, highlightbackground=p.field_border if p else "#555").pack()
         tw.update_idletasks()
         x = self.widget.winfo_rootx() + self.widget.winfo_width() // 2 - tw.winfo_width() // 2
-        y = self.widget.winfo_rooty() - tw.winfo_height() - 6
+        y = self.widget.winfo_rooty() - tw.winfo_height() - px(6)
         if y < 0:
-            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + px(6)
         tw.geometry(f"+{max(0, x)}+{y}")
         round_corners(tw, small=True)
 
@@ -350,7 +354,7 @@ class PopupMenu(tk.Toplevel):
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.configure(bg=p.field_border)
-        body = tk.Frame(self, bg=p.chrome, padx=4, pady=4)
+        body = tk.Frame(self, bg=p.chrome, padx=px(4), pady=px(4))
         body.pack(padx=1, pady=1)
         self._imgs = []
         for it in items:
@@ -359,11 +363,11 @@ class PopupMenu(tk.Toplevel):
         sx, sy, sw, sh = screen_area(self)
         if x is None:
             x = anchor.winfo_rootx() + (anchor.winfo_width() - self.winfo_width() if right else 0)
-            below = anchor.winfo_rooty() + anchor.winfo_height() + 6
-            over = anchor.winfo_rooty() - self.winfo_height() - 6
+            below = anchor.winfo_rooty() + anchor.winfo_height() + px(6)
+            over = anchor.winfo_rooty() - self.winfo_height() - px(6)
             y = over if (above and over >= sy) or below + self.winfo_height() > sy + sh else below
-        x = min(x, sx + sw - self.winfo_width() - 4)
-        y = min(y, sy + sh - self.winfo_height() - 4)
+        x = min(x, sx + sw - self.winfo_width() - px(4))
+        y = min(y, sy + sh - self.winfo_height() - px(4))
         self.geometry(f"+{max(sx, x)}+{max(sy, y)}")
         round_corners(self)
         if parent_menu is None:
@@ -382,20 +386,20 @@ class PopupMenu(tk.Toplevel):
         row.pack(fill="x")
         kids = []
         if icon:
-            normal = ImageTk.PhotoImage(icon_image(icon, 16, color or p.text_dim))
-            white = ImageTk.PhotoImage(icon_image(icon, 16, "#ffffff"))
+            normal = ImageTk.PhotoImage(icon_image(icon, px(16), color or p.text_dim))
+            white = ImageTk.PhotoImage(icon_image(icon, px(16), "#ffffff"))
             self._imgs += [normal, white]
-            lab = tk.Label(row, image=normal, bg=p.chrome, width=18, bd=0)
-            lab.pack(side="left", padx=(8, 0), pady=5)
+            lab = tk.Label(row, image=normal, bg=p.chrome, width=px(18), bd=0)
+            lab.pack(side="left", padx=(px(8), 0), pady=px(5))
             lab.looks = ({"image": normal}, {"image": white})
             kids.append(lab)
         t = tk.Label(row, text=text, bg=p.chrome, fg=color or (p.text if active else p.text_faint), font=self.font,
-                     anchor="w", padx=8, pady=5)
+                     anchor="w", padx=px(8), pady=px(5))
         t.pack(side="left", fill="x", expand=True)
         t.looks = ({"fg": t.cget("fg")}, {"fg": "#ffffff"})
         kids.append(t)
         if right:
-            r = tk.Label(row, text=right, bg=p.chrome, fg=p.text_faint, font=self.font, padx=10)
+            r = tk.Label(row, text=right, bg=p.chrome, fg=p.text_faint, font=self.font, padx=px(10))
             r.pack(side="right")
             r.looks = ({"fg": p.text_faint}, {"fg": "#ffffff"})
             kids.append(r)
@@ -410,11 +414,11 @@ class PopupMenu(tk.Toplevel):
     def _add(self, body, it):
         p, kind = self.p, it[0]
         if kind == "sep":
-            tk.Frame(body, bg=p.separator, height=1).pack(fill="x", padx=6, pady=4)
+            tk.Frame(body, bg=p.separator, height=max(1, px(1))).pack(fill="x", padx=px(6), pady=px(4))
             return
         if kind == "header":
             tk.Label(body, text=it[1].upper(), bg=p.chrome, fg=p.text_faint, font=self.font, anchor="w",
-                     padx=8).pack(fill="x", pady=(4, 2))
+                     padx=px(8)).pack(fill="x", pady=(px(4), px(2)))
             return
         if kind == "info":
             self._row(body, it[1], color=it[2] if len(it) > 2 else p.text_dim, active=False)
@@ -429,7 +433,7 @@ class PopupMenu(tk.Toplevel):
             label, cb, checked = it[1], it[2], it[3]
             row, kids = self._row(body, label, icon="check" if checked else None)
             if not checked:
-                kids[0].configure(padx=8 + 26)
+                kids[0].configure(padx=px(8 + 26))
         else:
             label, cb = it[1], it[2]
             icon = it[3] if len(it) > 3 else None
@@ -445,7 +449,7 @@ class PopupMenu(tk.Toplevel):
             return
         self._close_child()
         self.child = PopupMenu(row, items, self.p, self.font, parent_menu=self,
-                               x=self.winfo_rootx() + self.winfo_width() - 2, y=row.winfo_rooty() - 5)
+                               x=self.winfo_rootx() + self.winfo_width() - px(2), y=row.winfo_rooty() - px(5))
         self.child.items_id = id(items)
 
     def _close_child(self):

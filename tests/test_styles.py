@@ -200,3 +200,11 @@ def test_style_tiles_fit_the_screen():
     side, cols = grid_size(980, 600, 25)                     # a short screen: smaller tiles, more to a row
     assert TILE_MIN <= side < TILE_MAX and -(-25 // cols) * (side + LABEL_H + GAP) <= 600 - CHROME_H
     assert grid_size(600, 300, 40)[0] == TILE_MIN            # never smaller than TILE_MIN
+
+
+def test_style_tiles_grow_with_display_scaling(monkeypatch):
+    from genfill import dpi, style_panel
+    at_100 = style_panel.grid_size(942, 2000, 40)
+    monkeypatch.setattr(dpi, "SCALE", 1.5)
+    side, cols = style_panel.grid_size(round(942 * 1.5), 3000, 40)
+    assert side == round(at_100[0] * 1.5) and cols == at_100[1]  # the same panel, just sharper

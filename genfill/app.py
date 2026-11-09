@@ -18,9 +18,10 @@ from tkinter import filedialog, messagebox
 
 from PIL import ImageTk
 
-from . import (__version__, autostart, presets, results_store, setup_env, shoot_store, shoots, style_thumbs, styles,
+from . import (__version__, autostart, dpi, presets, results_store, setup_env, shoot_store, shoots, style_thumbs, styles,
                theme, updates)
 from .comfy import ComfyClient, ComfyError
+from .dpi import px
 from .photocraft_client import PhotoCraftClient, PhotoCraftError
 from .photoshoot import SHOT_COUNTS, reshoot, run_photoshoot
 from .picker import Picker
@@ -46,7 +47,8 @@ class PromptField(tk.Canvas):
     """Rounded text field with a placeholder and a recent-prompts button inside."""
 
     def __init__(self, master, p, font, width: int, on_enter, on_history):
-        super().__init__(master, width=width, height=32, bg=p.chrome, highlightthickness=0, bd=0)
+        width = px(width)
+        super().__init__(master, width=width, height=px(32), bg=p.chrome, highlightthickness=0, bd=0)
         self.p, self.w, self._focused, self._showing = p, width, False, False
         self._placeholder = ""
         self.entry = tk.Entry(self, bd=0, relief="flat", bg=p.field, fg=p.text, insertbackground=p.text,
@@ -55,8 +57,9 @@ class PromptField(tk.Canvas):
                                  tooltip="Recent prompts")
         self._bg = None
         self._draw_bg()
-        self._entry_win = self.create_window(12, 16, window=self.entry, anchor="w", width=width - 12 - 34, height=20)
-        self._history_win = self.create_window(width - 5, 16, window=self.history, anchor="e")
+        self._entry_win = self.create_window(px(12), px(16), window=self.entry, anchor="w",
+                                             width=width - px(12 + 34), height=px(20))
+        self._history_win = self.create_window(width - px(5), px(16), window=self.history, anchor="e")
         self.bind("<Configure>", self._resized)  # it stretches to the bar's width
         self.entry.bind("<FocusIn>", self._focus_in)
         self.entry.bind("<FocusOut>", self._focus_out)
@@ -64,14 +67,14 @@ class PromptField(tk.Canvas):
         self.bind("<Button-1>", lambda e: self.entry.focus_set())
 
     def _resized(self, e) -> None:
-        if e.width != self.w and e.width > 60:
+        if e.width != self.w and e.width > px(60):
             self.w = e.width
-            self.itemconfigure(self._entry_win, width=self.w - 12 - 34)
-            self.coords(self._history_win, self.w - 5, 16)
+            self.itemconfigure(self._entry_win, width=self.w - px(12 + 34))
+            self.coords(self._history_win, self.w - px(5), px(16))
             self._draw_bg()
 
     def _draw_bg(self):
-        img = ImageTk.PhotoImage(shape_image(self.w, 32, 8, self.p.field,
+        img = ImageTk.PhotoImage(shape_image(self.w, px(32), px(8), self.p.field,
                                              self.p.accent if self._focused else self.p.field_border))
         self.delete("bg")
         self.create_image(0, 0, image=img, anchor="nw", tags="bg")
@@ -122,11 +125,11 @@ class StatusPill(tk.Toplevel):
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.configure(bg=p.field_border)
-        body = tk.Frame(self, bg=p.field, padx=10, pady=5)
+        body = tk.Frame(self, bg=p.field, padx=px(10), pady=px(5))
         body.pack(padx=1, pady=1)
         self.dot = tk.Label(body, bg=p.field, bd=0)
-        self.dot.pack(side="left", padx=(0, 8))
-        self.label = tk.Label(body, bg=p.field, fg=p.text, font=font, justify="left", wraplength=460)
+        self.dot.pack(side="left", padx=(0, px(8)))
+        self.label = tk.Label(body, bg=p.field, fg=p.text, font=font, justify="left", wraplength=px(460))
         self.label.pack(side="left")
         for w in (self, body, self.dot, self.label):
             w.bind("<Button-1>", lambda e: self.hide())
@@ -135,7 +138,7 @@ class StatusPill(tk.Toplevel):
 
     def show(self, text: str, color: str | None, hide_after: int | None = None) -> None:
         self.label.configure(text=text)
-        self._dot = ImageTk.PhotoImage(shape_image(8, 8, 4, color or self.p.accent, None))
+        self._dot = ImageTk.PhotoImage(shape_image(px(8), px(8), px(4), color or self.p.accent, None))
         self.dot.configure(image=self._dot)
         if self._after:
             self.after_cancel(self._after)
@@ -159,10 +162,10 @@ class StatusPill(tk.Toplevel):
         self.update_idletasks()
         b = self.bar
         x = b.winfo_rootx() + (b.winfo_width() - self.winfo_width()) // 2
-        y = b.winfo_rooty() + b.winfo_height() + 6
+        y = b.winfo_rooty() + b.winfo_height() + px(6)
         _sx, sy, _sw, sh = screen_area(b)
         if y + self.winfo_height() > sy + sh:
-            y = b.winfo_rooty() - self.winfo_height() - 6
+            y = b.winfo_rooty() - self.winfo_height() - px(6)
         self.geometry(f"+{x}+{y}")
 
 
@@ -238,23 +241,23 @@ class App:
         outer = self.frame = tk.Frame(self.root, bg=p.chrome)
         outer.pack(fill="both", expand=True, padx=1 if BORDERLESS else 0, pady=1 if BORDERLESS else 0)
         # two rows: the prompt on top, the buttons under it
-        top = tk.Frame(outer, bg=p.chrome, padx=6, pady=0)
-        top.pack(fill="x", pady=(7, 0))
-        row = tk.Frame(outer, bg=p.chrome, padx=6, pady=6)
+        top = tk.Frame(outer, bg=p.chrome, padx=px(6), pady=0)
+        top.pack(fill="x", pady=(px(7), 0))
+        row = tk.Frame(outer, bg=p.chrome, padx=px(6), pady=px(6))
         row.pack(fill="x")
 
         def sep():
-            tk.Frame(row, bg=p.separator, width=1, height=22).pack(side="left", padx=6)
+            tk.Frame(row, bg=p.separator, width=max(1, px(1)), height=px(22)).pack(side="left", padx=px(6))
 
         def button(**kw) -> BarButton:
             return BarButton(row, p, f["button"] if kw.get("kind") == "primary" else f["body"], **kw)
 
         # drag grip
-        grip = tk.Canvas(top, width=14, height=32, bg=p.chrome, highlightthickness=0, cursor="fleur")
+        grip = tk.Canvas(top, width=px(14), height=px(32), bg=p.chrome, highlightthickness=0, cursor="fleur")
         for cx in (4, 10):
             for cy in (10, 16, 22):
-                grip.create_oval(cx - 1.5, cy - 1.5, cx + 1.5, cy + 1.5, fill=p.text_faint, outline="")
-        grip.pack(side="left", padx=(2, 4))
+                grip.create_oval(px(cx - 1.5), px(cy - 1.5), px(cx + 1.5), px(cy + 1.5), fill=p.text_faint, outline="")
+        grip.pack(side="left", padx=(px(2), px(4)))
         Tooltip(grip, "Drag to move the bar")
         grip.bind("<ButtonPress-1>", self._drag_start)
         grip.bind("<B1-Motion>", self._drag)
@@ -292,11 +295,11 @@ class App:
         self.more_btn = button(icon="more", command=self.more_menu, tooltip="Settings, connection, version")
         self.actions = [self.rm_btn, self.sel_btn, self.fix_btn, self.size_btn, self.create_btn, self.others_btn,
                         self.reshoot_btn, self.gen_btn]
-        self.more_btn.pack(side="right", padx=(4, 0))
+        self.more_btn.pack(side="right", padx=(px(4), 0))
         if self.update_info:
             self.more_btn.set_on(False, badge=True)
 
-        self.progress = tk.Canvas(outer, height=2, bg=p.chrome, highlightthickness=0)
+        self.progress = tk.Canvas(outer, height=px(2), bg=p.chrome, highlightthickness=0)
         self.progress.pack(fill="x", side="bottom")
 
         if self.pill is not None:
@@ -320,7 +323,7 @@ class App:
         if self.shoot_tagged and self.picker is None and not self.busy and self.mode != "empty":
             shown = shown[:-1] + [self.reshoot_btn, shown[-1]]
         for b in reversed(shown):  # right-aligned, next to the ⋯ button
-            b.pack(side="right", padx=(4, 0))
+            b.pack(side="right", padx=(px(4), 0))
         style = self._style_label() if self.mode != "selection" else ""  # fills don't use the style
         if style and self.mode == "image":  # Generate with nothing typed just applies the style
             self.prompt.set_placeholder(f"Describe a change, or leave empty to make it {style}…")
@@ -361,8 +364,8 @@ class App:
         w, h = self.root.winfo_reqwidth(), self.root.winfo_reqheight()
         sx, sy, sw, sh = screen_area(self.root)
         x, y = self.settings.bar_x, self.settings.bar_y
-        if x is None or y is None or not (sx <= x <= sx + sw - 80 and sy <= y <= sy + sh - h):
-            x, y = (self.root.winfo_screenwidth() - w) // 2, 90  # top centre of the main screen
+        if x is None or y is None or not (sx <= x <= sx + sw - px(80) and sy <= y <= sy + sh - h):
+            x, y = (self.root.winfo_screenwidth() - w) // 2, px(90)  # top centre of the main screen
         self.root.geometry(f"+{x}+{y}")
 
     def _drag_start(self, e) -> None:
@@ -393,13 +396,13 @@ class App:
             self._progress_pos = (self._progress_pos + 0.012) % 1.3
             x = (self._progress_pos - 0.3) * w
             self.progress.delete("all")
-            self.progress.create_rectangle(x, 0, x + 0.3 * w, 2, fill=self.p.accent, outline="")
+            self.progress.create_rectangle(x, 0, x + 0.3 * w, px(2), fill=self.p.accent, outline="")
             self._progress_after = self.root.after(16, step)
         step()
 
     def progress_set(self, fraction: float) -> None:
         self._stop_progress()
-        self.progress.create_rectangle(0, 0, fraction * self.progress.winfo_width(), 2, fill=self.p.accent,
+        self.progress.create_rectangle(0, 0, fraction * self.progress.winfo_width(), px(2), fill=self.p.accent,
                                        outline="")
 
     def _stop_progress(self) -> None:
@@ -1235,6 +1238,7 @@ def main() -> None:
     server = _first_instance()
     if server is None:
         return  # the bar is already running
+    dpi.enable()  # sharp text at 125% / 150% / 200% display scaling (before the first window)
     root = tk.Tk()
     app = App(root, background=autostart.BACKGROUND in sys.argv)
     app.server = server

@@ -12,6 +12,7 @@ from typing import Callable
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from . import depth, imaging, presets, results_store, styles
+from .dpi import px
 from .comfy import (ComfyClient, ComfyError, build_create_workflow, build_edit_workflow, build_fill_workflow,
                     build_depth_workflow, build_refine_workflow, build_seedvr_workflow, build_segment_workflow,
                     UPSCALE_MODEL)
@@ -108,7 +109,7 @@ def _preview(img: Image.Image, box: Bounds | None) -> Image.Image:
         img = img.crop((max(0, x0 - mx), max(0, y0 - my), min(img.width, x1 + mx), min(img.height, y1 + my)))
     flat = Image.new("RGB", img.size, (128, 128, 128))
     flat.paste(img, mask=img.getchannel("A"))
-    flat.thumbnail((PREVIEW_SIDE, PREVIEW_SIDE), Image.LANCZOS)
+    flat.thumbnail((px(PREVIEW_SIDE), px(PREVIEW_SIDE)), Image.LANCZOS)
     return flat
 
 

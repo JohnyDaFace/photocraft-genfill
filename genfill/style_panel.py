@@ -12,6 +12,7 @@ from typing import Callable
 from PIL import Image, ImageDraw, ImageTk
 
 from . import style_thumbs, styles
+from .dpi import px
 from .widgets import BarButton, round_corners, screen_area
 
 GAP = 8
@@ -37,13 +38,13 @@ def groups(every: list[tuple[str, str]]) -> list[tuple[str, list[tuple[str, str]
 def grid_size(width: int, room: int, most: int) -> tuple[int, int]:
     """(thumbnail side, columns) so `most` tiles fit in `width` by `room` pixels: as big as TILE_MAX, smaller
     (and more to a row) only when the screen has no room for them."""
-    side = TILE_MAX
+    gap, side = px(GAP), px(TILE_MAX)
     while True:
-        cols = max(4, (width - 26 + GAP) // (side + GAP))
+        cols = max(4, (width - px(26) + gap) // (side + gap))
         rows = -(-most // cols)
-        if rows * (side + LABEL_H + GAP) <= room - CHROME_H or side <= TILE_MIN:
+        if rows * (side + px(LABEL_H) + gap) <= room - px(CHROME_H) or side <= px(TILE_MIN):
             return side, cols
-        side -= 4
+        side -= px(4)
 
 
 def toggled(name: str, current: str) -> str:
@@ -68,24 +69,24 @@ class StylePanel(tk.Toplevel):
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.configure(bg=p.field_border)
-        body = tk.Frame(self, bg=p.chrome, padx=12, pady=10)
+        body = tk.Frame(self, bg=p.chrome, padx=px(12), pady=px(10))
         body.pack(padx=1, pady=1)
         self._photos, self.tiles, self.cells = [], {}, []
         every = styles.load()
         tabs = [(t, g) for t, g in groups(every) if t != ANGLES_TAB or on_angle is not None]
         sx, sy, sw, sh = screen_area(bar)
         top, bottom = bar.winfo_rooty(), bar.winfo_rooty() + bar.winfo_height()
-        room = max(top - sy, sy + sh - bottom) - 12  # the panel opens below the bar, or above it if more room
+        room = max(top - sy, sy + sh - bottom) - px(12)  # the panel opens below the bar, or above it if more room
         self.side, cols = grid_size(width, room, max(len(g) for _, g in tabs))
         # what is picked, both parts: a look and an angle are used together
         summary = tk.Frame(body, bg=p.chrome)
-        summary.grid(row=0, column=0, sticky="w", pady=(0, 8))
+        summary.grid(row=0, column=0, sticky="w", pady=(0, px(8)))
         self.look_chip = self._chip(summary, "Look", lambda: self.show_tab(tab_of(self.current, every)))
         if on_angle is not None:
-            tk.Label(summary, text="+", bg=p.chrome, fg=p.text_dim, font=fonts["body"]).pack(side="left", padx=6)
+            tk.Label(summary, text="+", bg=p.chrome, fg=p.text_dim, font=fonts["body"]).pack(side="left", padx=px(6))
             self.angle_chip = self._chip(summary, "Angle", lambda: self.show_tab(ANGLES_TAB))
         bar_row = tk.Frame(body, bg=p.chrome)
-        bar_row.grid(row=1, column=0, sticky="w", pady=(0, 8))
+        bar_row.grid(row=1, column=0, sticky="w", pady=(0, px(8)))
         stack = tk.Frame(body, bg=p.chrome)
         stack.grid(row=2, column=0, sticky="nw")
         self.pages, self.tab_labels = {}, {}
@@ -94,14 +95,14 @@ class StylePanel(tk.Toplevel):
             page.grid(row=0, column=0, sticky="nw")  # measured below, then only the shown tab stays
             for i, (name, text) in enumerate(members):
                 self._tile(page, name, text, tab == ANGLES_TAB).grid(row=i // cols, column=i % cols,
-                                                  padx=(0 if i % cols == 0 else GAP, 0), pady=(0, GAP), sticky="n")
+                                                  padx=(0 if i % cols == 0 else px(GAP), 0), pady=(0, px(GAP)), sticky="n")
             self.pages[tab] = page
             if tab == ANGLES_TAB:  # set apart: an angle is added on top of the look, not instead of it
-                tk.Frame(bar_row, bg=p.separator, width=1, height=20).pack(side="left", padx=(4, 8))
+                tk.Frame(bar_row, bg=p.separator, width=max(1, px(1)), height=px(20)).pack(side="left", padx=(px(4), px(8)))
             btn = BarButton(bar_row, p, fonts["body"], text=("+ " + tab) if tab == ANGLES_TAB else tab,
                             kind="outline", height=28,
                             command=lambda t=tab: self.show_tab(t))
-            btn.pack(side="left", padx=(0, 6))
+            btn.pack(side="left", padx=(0, px(6)))
             self.tab_labels[tab] = btn
         self.update_idletasks()  # the panel keeps the biggest tab's size, so switching tabs doesn't jump
         stack.configure(width=max(pg.winfo_reqwidth() for pg in self.pages.values()),
@@ -110,7 +111,7 @@ class StylePanel(tk.Toplevel):
         self.show_tab(tab_of(current, every))
         row = 3
         foot = tk.Frame(body, bg=p.chrome)
-        foot.grid(row=row, column=0, sticky="we", pady=(4, 0))
+        foot.grid(row=row, column=0, sticky="we", pady=(px(4), 0))
         tk.Label(foot, text=("Pick a look, then an angle if you like: they're used together. "
                              "Click a picked one again to turn it off."), bg=p.chrome, fg=p.text_dim,
                  font=fonts["small"]).pack(side="left")
@@ -118,21 +119,21 @@ class StylePanel(tk.Toplevel):
                   command=self.close).pack(side="right")
         if on_edit is not None:
             BarButton(foot, p, fonts["body"], icon="gear", text="Edit styles", kind="outline", height=28,
-                      command=lambda: (self.close(), on_edit())).pack(side="right", padx=(0, 6))
+                      command=lambda: (self.close(), on_edit())).pack(side="right", padx=(0, px(6)))
         if on_clear is not None:
             self.clear_btn = BarButton(foot, p, fonts["body"], icon="x", text="Clear all", kind="outline", height=28,
                                        command=self._clear_all)
-            self.clear_btn.pack(side="right", padx=(0, 6))
+            self.clear_btn.pack(side="right", padx=(0, px(6)))
         self._on_clear = on_clear
         self._refresh()
 
         self.update_idletasks()
         sx, sy, sw, sh = screen_area(self)
         x = bar.winfo_rootx()
-        y = bar.winfo_rooty() + bar.winfo_height() + 6
+        y = bar.winfo_rooty() + bar.winfo_height() + px(6)
         if y + self.winfo_height() > sy + sh:
-            y = bar.winfo_rooty() - self.winfo_height() - 6
-        self.geometry(f"+{max(sx, min(x, sx + sw - self.winfo_width() - 4))}+{max(sy, y)}")
+            y = bar.winfo_rooty() - self.winfo_height() - px(6)
+        self.geometry(f"+{max(sx, min(x, sx + sw - self.winfo_width() - px(4)))}+{max(sy, y)}")
         round_corners(self)
         self.bind("<Escape>", lambda e: self.close())
         self.bind("<ButtonPress>", self._click)
@@ -167,7 +168,7 @@ class StylePanel(tk.Toplevel):
             with Image.open(f) as im:
                 return im.convert("RGB").resize((self.side, self.side), Image.LANCZOS)
         im = Image.new("RGB", (self.side, self.side), self.p.field)
-        ImageDraw.Draw(im).text((8, self.side // 2 - 6), "making preview…", fill=self.p.text_faint)
+        ImageDraw.Draw(im).text((px(8), self.side // 2 - px(6)), "making preview…", fill=self.p.text_faint)
         return im
 
     def _tile(self, body, name: str, text: str, is_angle: bool = False) -> tk.Frame:
@@ -175,12 +176,12 @@ class StylePanel(tk.Toplevel):
         cell = tk.Frame(body, bg=p.chrome, cursor="hand2")
         photo = ImageTk.PhotoImage(self._picture(name, text))
         self._photos.append(photo)
-        img = tk.Label(cell, image=photo, bg=p.chrome, bd=0, highlightthickness=2,
+        img = tk.Label(cell, image=photo, bg=p.chrome, bd=0, highlightthickness=px(2),
                        highlightbackground=p.accent if on else p.chrome)
         img.pack()
         label = tk.Label(cell, text=name, bg=p.chrome, fg=p.text if on else p.text_dim, font=self.fonts["small"],
                          wraplength=self.side)
-        label.pack(pady=(3, 0))
+        label.pack(pady=(px(3), 0))
         choose = "" if name == style_thumbs.OFF else name
         for w in (cell, img, label):
             w.bind("<ButtonRelease-1>", lambda e, c=choose, a=is_angle: self._choose(c, a))
