@@ -13,6 +13,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from . import depth, imaging, presets, results_store, styles
 from .dpi import px
+from .families import family
 from .comfy import (ComfyClient, ComfyError, build_create_workflow, build_edit_workflow, build_fill_workflow,
                     build_depth_workflow, build_refine_workflow, build_seedvr_workflow, build_segment_workflow,
                     UPSCALE_MODEL)
@@ -111,6 +112,20 @@ def _preview(img: Image.Image, box: Bounds | None) -> Image.Image:
     flat.paste(img, mask=img.getchannel("A"))
     flat.thumbnail((px(PREVIEW_SIDE), px(PREVIEW_SIDE)), Image.LANCZOS)
     return flat
+
+
+INSTRUCTION_VERBS = {"add", "put", "place", "insert", "make", "change", "replace", "turn", "remove", "give",
+                     "draw", "fill", "show", "keep", "create", "let", "move", "swap", "paint"}
+
+
+def fill_text(label: str, settings: Settings) -> str:
+    """What a fill asks for. FLUX 3 only follows an instruction there: "a dog" repaints what was behind the
+    selection, "Add a dog" draws one; FLUX.2 takes either."""
+    words = label.split()
+    if not words or not family(settings.model_family).fill_instruction \
+            or words[0].lower().strip(",.:;!") in INSTRUCTION_VERBS:
+        return label
+    return "Add " + label
 
 
 def remove_prompt(what: str) -> str:
@@ -260,7 +275,7 @@ def generate(prompt: str, settings: Settings, status: Status, progress: Progress
         elif styled:  # with no prompt: just the style, keeping everything else
             told = styles.styled(label, settings.style, restyle=True, edit=True, angle=settings.angle)
         else:
-            told = label
+            told = label if edit else fill_text(label, settings)
         job = Job(image, mask, doc.selection, told, None if remove else reference)
         images = _candidates(job, settings, status, progress, cancel, comfy, count)
         if edit and name in presets.KEEP_COLOURS:
@@ -720,14 +735,15 @@ def fix_faces(settings: Settings, status: Status, progress: Progress, cancel, pc
     refs, models, head_swap = [], settings.workflow_models, False
     if reference is not None:
         try:
-            head_swap = bool(settings.face_swap_lora) and comfy.has_lora(settings.face_swap_lora)
+            head_swap = family(settings.model_family).head_swap and bool(settings.face_swap_lora) \
+                and comfy.has_lora(settings.face_swap_lora)
         except ComfyError as e:
             raise UserFacingError(str(e)) from e
         if head_swap:
             # the face-swap LoRA instead of the user's own LoRAs: it swaps the whole head, hair included
             status("Cutting out the head in the reference picture…")
             refs = [comfy.upload(_reference_head(reference, settings, cancel, comfy), "genfill_face_ref.png")]
-            models = {**settings.models, "loras": [{"name": settings.face_swap_lora, "strength": 1.0}]}
+            models = {**settings.workflow_models, "loras": [{"name": settings.face_swap_lora, "strength": 1.0}]}
             text = (HEAD_SWAP_PROMPT + " " + prompt.strip()).strip()
         else:
             status("Looking for the face in the reference picture…")

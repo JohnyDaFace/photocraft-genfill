@@ -22,6 +22,7 @@ from . import (__version__, autostart, dpi, presets, results_store, setup_env, s
                theme, updates)
 from .comfy import ComfyClient, ComfyError
 from .dpi import px
+from .families import family
 from .photocraft_client import PhotoCraftClient, PhotoCraftError
 from .photoshoot import SHOT_COUNTS, reshoot, run_photoshoot
 from .picker import Picker
@@ -724,8 +725,9 @@ class App:
         try:
             comfy = ComfyClient(self.settings.comfy_url)
             comfy.check()
-            problems = comfy.check_setup(self.settings.models)
-            self.conn["ComfyUI"] = (not problems, "connected" if not problems else "models missing")
+            problems = comfy.check_setup(self.settings.workflow_models)
+            model = family(self.settings.model_family).label
+            self.conn["ComfyUI"] = (not problems, f"connected, {model}" if not problems else f"{model} files missing")
             msgs += ["ComfyUI: " + " ".join(problems)] if problems else []
             sam = comfy.check_segment()
             self.conn["Select (SAM 3)"] = (not sam, "ready" if not sam else "model missing (see README)")
@@ -735,7 +737,9 @@ class App:
                 self.conn["Upscale"] = (True, "4x-UltraSharp + FLUX (SeedVR2 is sharper, see README)")
             else:
                 self.conn["Upscale"] = (False, "no upscale model, soft (see README)")
-            if self.settings.face_swap_lora and comfy.has_lora(self.settings.face_swap_lora):
+            if not family(self.settings.model_family).head_swap:
+                self.conn["Replace face"] = (None, "face only (the BFS LoRA is for FLUX.2 Klein)")
+            elif self.settings.face_swap_lora and comfy.has_lora(self.settings.face_swap_lora):
                 self.conn["Replace face"] = (True, "BFS head swap (best)")
             else:
                 self.conn["Replace face"] = (False, "face only, no BFS LoRA (see README)")

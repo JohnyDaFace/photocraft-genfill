@@ -12,6 +12,8 @@ from typing import Any, Callable
 
 from PIL import Image
 
+from .families import family
+
 POLL_SECONDS = 0.5
 TIMEOUT_SECONDS = 600
 
@@ -23,15 +25,10 @@ class ComfyError(Exception):
     """A problem talking to ComfyUI or running the workflow, worded for the user."""
 
 
-# What each model slot needs: the ComfyUI loader node + its file input, the models subfolder and
-# where to get the default file (docs.comfy.org/tutorials/flux/flux-2-klein).
-MODEL_SLOTS = {
-    "unet": ("UNETLoader", "unet_name", "diffusion_models",
-             "https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8 (accept the agreement first)"),
-    "clip": ("CLIPLoader", "clip_name", "text_encoders",
-             "https://huggingface.co/Comfy-Org/flux2-klein-9B/blob/main/split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors"),
-    "vae": ("VAELoader", "vae_name", "vae",
-            "https://huggingface.co/Comfy-Org/flux2-dev/blob/main/split_files/vae/flux2-vae.safetensors"),
+MODEL_SLOTS = {  # slot: (loader node, its file field, ComfyUI/models folder); the files: families.py
+    "unet": ("UNETLoader", "unet_name", "diffusion_models"),
+    "clip": ("CLIPLoader", "clip_name", "text_encoders"),
+    "vae": ("VAELoader", "vae_name", "vae"),
 }
 REQUIRED_NODES = ["Flux2Scheduler", "ReferenceLatent", "SetLatentNoiseMask", "SplitSigmasDenoise", "CFGGuider",
                   "SamplerCustomAdvanced", "ConditioningZeroOut", "LoadImageMask"]
@@ -42,7 +39,8 @@ def _loaders(models: dict) -> dict:
     LoraLoaderModelOnly nodes, each a file name or {"name": …, "strength": …}; the last one is "model"."""
     wf = {
         "unet": {"class_type": "UNETLoader", "inputs": {"unet_name": models["unet"], "weight_dtype": "default"}},
-        "clip": {"class_type": "CLIPLoader", "inputs": {"clip_name": models["clip"], "type": "flux2"}},
+        "clip": {"class_type": "CLIPLoader", "inputs": {"clip_name": models["clip"],
+                                                        "type": family(models.get("family")).clip_type}},
         "vae": {"class_type": "VAELoader", "inputs": {"vae_name": models["vae"]}},
     }
     model = ["unet", 0]
@@ -60,6 +58,14 @@ def _model_ref(wf: dict) -> list:
     """The model to sample with: the last LoRA in the chain, or the plain model."""
     loras = sorted((int(k[4:]) for k in wf if k.startswith("lora") and k[4:].isdigit()))
     return [f"lora{loras[-1]}", 0] if loras else ["unet", 0]
+
+
+def _schedule(wf: dict, models: dict, steps: int, width: int, height: int) -> dict:
+    """The noise schedule: FLUX.2's size-aware one, or the model's own (FLUX 3)."""
+    if family(models.get("family")).scheduler == "flux2":
+        return {"class_type": "Flux2Scheduler", "inputs": {"steps": steps, "width": width, "height": height}}
+    return {"class_type": "BasicScheduler",
+            "inputs": {"model": _model_ref(wf), "scheduler": "simple", "steps": steps, "denoise": 1.0}}
 
 
 def _sampling(latent: list, positive: list, seed: int, sigmas: list, out_prefix: str,
@@ -115,7 +121,7 @@ def build_fill_workflow(image_name: str, mask_name: str, prompt: str, seed: int,
         "ref": {"class_type": "ReferenceLatent",
                 "inputs": {"conditioning": ["text", 0], "latent": ["ref_encode" if ref_name else "encode", 0]}},
         "masked": {"class_type": "SetLatentNoiseMask", "inputs": {"samples": ["encode", 0], "mask": ["mask", 0]}},
-        "sigmas": {"class_type": "Flux2Scheduler", "inputs": {"steps": steps, "width": width, "height": height}},
+        "sigmas": _schedule(wf, models, steps, width, height),
     })
     if ref_name:
         wf["ref_image"] = {"class_type": "LoadImage", "inputs": {"image": ref_name}}
@@ -138,7 +144,7 @@ def build_edit_workflow(image_name: str, prompt: str, seed: int, steps: int,
         "image": {"class_type": "LoadImage", "inputs": {"image": image_name}},
         "encode": {"class_type": "VAEEncode", "inputs": {"pixels": ["image", 0], "vae": ["vae", 0]}},
         "text": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["clip", 0]}},
-        "sigmas": {"class_type": "Flux2Scheduler", "inputs": {"steps": steps, "width": width, "height": height}},
+        "sigmas": _schedule(wf, models, steps, width, height),
     })
     if self_reference:
         wf["ref"] = {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["text", 0], "latent": ["encode", 0]}}
@@ -158,7 +164,7 @@ def build_create_workflow(prompt: str, seed: int, steps: int, width: int, height
         "text": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["clip", 0]}},
         "latent": {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": width, "height": height,
                                                                      "batch_size": 1}},
-        "sigmas": {"class_type": "Flux2Scheduler", "inputs": {"steps": steps, "width": width, "height": height}},
+        "sigmas": _schedule(wf, models, steps, width, height),
     })
     conditioning = ["text", 0]
     for i, name in enumerate(extra_refs, 1):
@@ -201,7 +207,7 @@ def build_refine_workflow(image_name: str, prompt: str, seed: int, steps: int, d
         "text": {"class_type": "CLIPTextEncode",
                  "inputs": {"text": f"{UPSCALE_PROMPT} {prompt}".strip(), "clip": ["clip", 0]}},
         "ref": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["text", 0], "latent": ["encode", 0]}},
-        "sched": {"class_type": "Flux2Scheduler", "inputs": {"steps": steps, "width": width, "height": height}},
+        "sched": _schedule(wf, models, steps, width, height),
         "split": {"class_type": "SplitSigmasDenoise", "inputs": {"sigmas": ["sched", 0], "denoise": denoise}},
     })
     wf.update(_sampling(["encode", 0], ["ref", 0], seed, ["split", 1], "genfill_up", _model_ref(wf)))
@@ -310,7 +316,7 @@ class ComfyClient:
     def available_models(self) -> dict[str, list[str]]:
         """Model files ComfyUI offers for each slot (from its loader nodes' dropdowns)."""
         out = {}
-        for slot, (node, field, _folder, _url) in MODEL_SLOTS.items():
+        for slot, (node, field, _folder) in MODEL_SLOTS.items():
             info = self._json(f"/object_info/{node}").get(node, {})
             spec = info.get("input", {}).get("required", {}).get(field, [[]])
             choices = spec[0] if spec and isinstance(spec[0], list) else (spec[1] or {}).get("options", []) if len(spec) > 1 else []
@@ -325,10 +331,11 @@ class ComfyClient:
             problems.append("Your ComfyUI is too old for Flux 2 (missing: " + ", ".join(missing_nodes) +
                             "). Update ComfyUI and restart it.")
         have = self.available_models()
-        for slot, (_node, _field, folder, url) in MODEL_SLOTS.items():
+        fam = family(models.get("family"))
+        for slot, (_node, _field, folder) in MODEL_SLOTS.items():
             if models.get(slot) not in have.get(slot, []):
                 problems.append(f"ComfyUI doesn't have '{models.get(slot)}'. Put it in ComfyUI/models/{folder}/ "
-                                f"(download: {url}) or pick another file in Settings.")
+                                f"(download: {fam.urls[slot]}) or pick another file in Settings.")
         return problems
 
     def check_segment(self, model: str = SEGMENT_MODEL) -> list[str]:

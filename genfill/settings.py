@@ -9,6 +9,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from .families import DEFAULT_FAMILY, FAMILIES, family
 from .setup_env import APP_DIR
 
 
@@ -26,11 +27,7 @@ _OLD_SETTINGS_FILE = Path(__file__).resolve().parents[1] / "settings.json"  # be
 
 MAX_RECENT = 15  # prompts remembered
 
-DEFAULT_MODELS = {
-    "unet": "flux-2-klein-9b-fp8.safetensors",
-    "clip": "qwen_3_8b_fp8mixed.safetensors",
-    "vae": "flux2-vae.safetensors",
-}
+DEFAULT_MODELS = FAMILIES[DEFAULT_FAMILY].models
 
 
 def find_photocraft_cli() -> str:
@@ -89,13 +86,30 @@ class Settings:
     last_theme: str = "ProMedium"  # PhotoCraft's theme last time we saw it (window opens in it)
     bar_x: int | None = None  # where the bar was dragged to (None = top centre of the screen)
     bar_y: int | None = None
-    models: dict = field(default_factory=lambda: dict(DEFAULT_MODELS))
+    model_family: str = DEFAULT_FAMILY  # families.py: which image model draws (FLUX.2 Klein, FLUX 3 Klein…)
+    models: dict = field(default_factory=lambda: dict(DEFAULT_MODELS))  # its files
     loras: list = field(default_factory=list)  # optional, settings file only: file names or {"name", "strength"}
+    other_families: dict = field(default_factory=dict)  # the files, steps and LoRAs of the families not in use
 
     @property
     def workflow_models(self) -> dict:
-        """The model files plus the LoRAs, as the workflow builders take them."""
-        return {**self.models, "loras": self.loras if isinstance(self.loras, list) else []}
+        """The model files plus the LoRAs and the family, as the workflow builders take them."""
+        return {**self.models, "loras": self.loras if isinstance(self.loras, list) else [],
+                "family": self.model_family}
+
+    def switch_family(self, name: str) -> None:
+        """Draw with another model family: this one's files, steps and LoRAs are kept for coming back
+        (LoRAs belong to one model), the other's come back, or its defaults the first time."""
+        if name == self.model_family or name not in FAMILIES:
+            return
+        self.other_families[self.model_family] = {"models": dict(self.models), "steps": self.steps,
+                                                   "loras": list(self.loras)}
+        saved = self.other_families.pop(name, None) or {}
+        fam = FAMILIES[name]
+        self.model_family = name
+        self.models = {**fam.models, **(saved.get("models") or {})}
+        self.steps = int(saved.get("steps") or fam.steps)
+        self.loras = list(saved.get("loras") or [])
 
     @property
     def cli_path(self) -> str:
@@ -117,7 +131,11 @@ class Settings:
         if data.get("settings_version", 1) < 2 and s.megapixels == 1.0:
             s.megapixels = 2.0  # the old default: move to the sharper new one (a value set by hand stays)
         s.settings_version = 2
-        s.models = {**DEFAULT_MODELS, **(s.models if isinstance(s.models, dict) else {})}
+        if s.model_family not in FAMILIES:
+            s.model_family = DEFAULT_FAMILY
+        s.models = {**family(s.model_family).models, **(s.models if isinstance(s.models, dict) else {})}
+        if not isinstance(s.other_families, dict):
+            s.other_families = {}
         s.recent_prompts = [str(x) for x in s.recent_prompts][:MAX_RECENT] if isinstance(s.recent_prompts, list) else []
         return s
 

@@ -8,11 +8,12 @@ from tkinter import messagebox, ttk
 
 from . import __version__, setup_env, theme
 from .comfy import MODEL_SLOTS, ComfyClient, ComfyError
+from .families import FAMILIES, family
 from .dpi import px
 from .compat import run_checks
 from .settings import Settings, find_photocraft_cli
 
-LABELS = {"unet": "Flux 2 Klein model", "clip": "Text encoder", "vae": "VAE"}
+LABELS = {"unet": "Model file", "clip": "Text encoder", "vae": "VAE"}
 
 
 class SettingsDialog(tk.Toplevel):
@@ -20,6 +21,8 @@ class SettingsDialog(tk.Toplevel):
                  on_restart=None):
         super().__init__(master)
         self.s, self.p, self.f, self.on_save = settings, palette, fonts, on_save
+        self.work = Settings(**{**settings.__dict__, "models": dict(settings.models), "loras": list(settings.loras),
+                                "other_families": dict(settings.other_families)})  # family switches go here
         self.title("Settings – Generative Fill for PhotoCraft")
         self.configure(bg=palette.chrome)
         self.attributes("-topmost", True)
@@ -51,6 +54,13 @@ class SettingsDialog(tk.Toplevel):
         label("Address", row); entry("comfy_url", settings.comfy_url, row)
         theme.PillButton(fr, "Test", self.test_comfy, p, f["small"], height=24, min_width=60).grid(
             row=row, column=2, padx=(px(8), 0)); row += 1
+        label("Image model", row)
+        self.family_var = tk.StringVar(value=family(settings.model_family).label)
+        fam_cb = ttk.Combobox(fr, textvariable=self.family_var, style="PC.TCombobox", font=f["body"], state="readonly",
+                              values=[fam.label for fam in FAMILIES.values()])
+        fam_cb.grid(row=row, column=1, columnspan=2, sticky="ew", pady=px(4))
+        fam_cb.bind("<<ComboboxSelected>>", lambda e: self._switch_family())
+        row += 1
         self.combos = {}
         for slot in MODEL_SLOTS:
             label(LABELS[slot], row)
@@ -61,7 +71,9 @@ class SettingsDialog(tk.Toplevel):
             row += 1
 
         heading("Quality", row); row += 1
-        label("Fill steps (4 = fast, 8 = finer)", row); entry("steps", settings.steps, row, width=6); row += 1
+        self.steps_label = tk.Label(fr, text=self._steps_text(), bg=p.chrome, fg=p.text_dim, font=f["small"])
+        self.steps_label.grid(row=row, column=0, sticky="w", padx=(0, px(12)), pady=px(4))
+        entry("steps", settings.steps, row, width=6); row += 1
         label("Upscale strength (0.2 subtle – 0.4 strong)", row)
         entry("upscale_denoise", settings.upscale_denoise, row, width=6); row += 1
 
@@ -106,7 +118,8 @@ class SettingsDialog(tk.Toplevel):
             try:
                 c = ComfyClient(url)
                 have = c.available_models()
-                problems = c.check_setup({slot: self.vars[slot].get() for slot in MODEL_SLOTS})
+                problems = c.check_setup({**{slot: self.vars[slot].get() for slot in MODEL_SLOTS},
+                                          "family": self.work.model_family})
                 self.after(0, lambda: self._models_loaded(have, problems))
             except ComfyError as e:
                 self.after(0, lambda: self.msg.set(str(e)))
@@ -116,6 +129,26 @@ class SettingsDialog(tk.Toplevel):
         for slot, cb in self.combos.items():
             cb.configure(values=have.get(slot, []))
         self.msg.set("\n".join(problems) if problems else "ComfyUI is ready: all three model files were found.")
+
+    def _steps_text(self) -> str:
+        return f"Steps ({family(self.work.model_family).steps_hint})"
+
+    def _switch_family(self) -> None:
+        """Picked another image model: its files and steps come in (remembered, or its defaults)."""
+        name = next((k for k, fam in FAMILIES.items() if fam.label == self.family_var.get()), None)
+        if name is None or name == self.work.model_family:
+            return
+        self.work.models = {slot: self.vars[slot].get().strip() for slot in MODEL_SLOTS}
+        try:
+            self.work.steps = max(1, min(50, int(self.vars["steps"].get())))
+        except ValueError:
+            pass
+        self.work.switch_family(name)
+        for slot in MODEL_SLOTS:
+            self.vars[slot].set(self.work.models.get(slot, ""))
+        self.vars["steps"].set(str(self.work.steps))
+        self.steps_label.configure(text=self._steps_text())
+        self.load_models()
 
     def test_comfy(self) -> None:
         self.load_models()
@@ -149,7 +182,7 @@ class SettingsDialog(tk.Toplevel):
     # -- save ------------------------------------------------------------------------------------
     def _collect(self) -> Settings | None:
         try:
-            s = Settings(**{**self.s.__dict__})
+            s = Settings(**{**self.work.__dict__})
             s.comfy_url = self.vars["comfy_url"].get().strip() or s.comfy_url
             s.models = {slot: self.vars[slot].get().strip() for slot in MODEL_SLOTS}
             s.steps = max(1, min(50, int(self.vars["steps"].get())))
