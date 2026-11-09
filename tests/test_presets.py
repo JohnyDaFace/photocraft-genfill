@@ -35,8 +35,6 @@ def test_reflection_presets_for_windows_and_glasses():
     assert "glasses" in prompt_for("Remove reflections: glasses")
 
 
-def test_reflection_presets_share_one_submenu():
+def test_preset_items_lists_one_group():
     bar = SimpleNamespace(use_preset=lambda n: None)
-    shown = App.preset_items(bar)
-    sub = next(i for i in shown if i[0] == "sub" and i[1] == "Remove reflections")
-    assert [i[1] for i in sub[2]] == ["Windows", "Glasses"]
+    assert [i[1] for i in App.preset_items(bar, "Remove reflections")] == ["Windows", "Glasses"]

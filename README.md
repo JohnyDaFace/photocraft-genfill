@@ -11,15 +11,21 @@ FLUX.2 [klein]:
   layer**; your original layers are never changed. You get several versions to choose from.
 - **Expand** makes the canvas bigger (16:9, 4:5, 1:1… or a margin all round) and fills the new edges to
   match, like Photoshop's Generative Expand.
-- **Presets** (like Photoshop's Neural Filters): Harmonize, Colorize, Restore old photo, Sky replacement,
-  Remove reflections (windows, glasses), Background blur, Relight, and portrait tweaks, one click each.
+- **One-click edits** (like Photoshop's Neural Filters), each in the menu it belongs to: Restore old photo,
+  Colorize, Harmonize, Relight, Sky replacement and portrait tweaks under **Fix ▾**, and Remove reflections
+  (windows, glasses) under **Remove ▾**.
 - **More like this** (Generate Similar): new versions close to a result you almost like.
-- **Remove** takes away whatever is in the selection and fills in the background behind it.
-- **Select ▾** (with SAM 3) finds things by name: type "dog" or "boat" and it selects them, or pick Sky or
-  People. It can also **remove the background** around what you typed (a layer mask, nothing deleted), and select
-  the **foreground** or **background** by distance, with nothing typed.
-- **Fix ▾** holds the one-click fixes: **Remove** what you typed, all people or all cars in one go; **Faces**;
-  **Depth**; **Enhance**; and the **presets** (sky, relight, portrait, reflections, colorize, restore…).
+The bar's menus are grouped by what they do:
+
+- **Select ▾** only selects; nothing in the picture changes. With SAM 3 it finds things by name: type "dog" or
+  "boat" and it selects them, or pick Sky or People. **By distance** selects what's near (the foreground) or what's
+  far (the background), with no words needed.
+- **Remove ▾** takes things out: what's selected, or (with nothing selected) what you typed, all people or all
+  cars in one go, filling in what was behind them; **Remove background** (a layer mask, nothing deleted); and
+  reflections on windows or glasses.
+- **Fix ▾** makes the picture better or changes its look: **Enhance**, **Restore old photo**, **Colorize**,
+  **Harmonize**, **Faces** (sharpen, retouch, smile, younger/older, replace), and **Relight**, **Sky** and
+  **Blur & haze** (lens blur, haze, fog).
 - **Fix faces** (Fix ▾ › Faces) finds every face and restores it up close, sharper but the same person.
   **Replace face** gives one face the face of the person in another photo, keeping the expression and pose.
 - **Reference picture**: give Generate a second image to take an object or a style from.
@@ -62,7 +68,7 @@ made with the same model, so no real photos are involved.
 
 ![Generative Fill: a rowing boat added to a lake](docs/showcase/fill.jpg)
 
-**Remove**: select the cone, type *traffic cone*, click Remove.
+**Remove**: select the cone, type *traffic cone*, pick Remove ▾ › What's selected.
 
 ![Remove: a traffic cone taken off a park path](docs/showcase/remove.jpg)
 
@@ -80,7 +86,7 @@ made with the same model, so no real photos are involved.
 
 ![Select by name: the sky over the lake, and the boats in the harbour](docs/showcase/select.jpg)
 
-**Remove background**: Select ▾ › Remove background keeps the main subject; or type *coffee cup* first to keep just that.
+**Remove background**: Remove ▾ › Remove background keeps the main subject; or type *coffee cup* first to keep just that.
 
 ![Remove background: a coffee cup cut out, the rest hidden by a layer mask](docs/showcase/remove-background.jpg)
 
@@ -230,8 +236,8 @@ Download the file for your computer from the **Releases** page of this repositor
 
 The app is a small floating bar, like Photoshop's contextual task bar. It follows what you do in PhotoCraft:
 
-- **Something selected:** prompt, **Remove**, **Fix ▾** and **Generate** (fills the selection).
-- **Nothing selected:** prompt, **Select ▾**, **Fix ▾**, **Resize ▾**, **Create ▾** and **Generate** (changes the whole
+- **Something selected:** prompt, **Remove ▾**, **Fix ▾** and **Generate** (fills the selection).
+- **Nothing selected:** prompt, **Select ▾**, **Remove ▾**, **Fix ▾**, **Resize ▾**, **Create ▾** and **Generate** (changes the whole
   image, or only the thing the prompt names).
 - **No document open:** prompt, the shape of the new picture (for example **1:1 ▾**) and **Create** (or press
   Enter).
@@ -256,7 +262,7 @@ has Settings, the PhotoCraft connection, the version and Quit.
 The prompt box remembers your last 15 prompts: click the clock icon inside it to pick one again.
 
 **Remove**: select the object (generously, including its shadow), optionally type what it is ("basket",
-"the person on the left"), and click **Remove**. Naming it helps when the selection holds more than one thing.
+"the person on the left"), and pick **Remove ▾ › What's selected**. Naming it helps when the selection holds more than one thing.
 
 **Reference picture**: click **Reference** and pick an image file, then mention it as
 "image 2" in the prompt: "the logo from image 2 as a poster on the wall", "a chair like the one in image 2",
@@ -320,7 +326,8 @@ sentence or two describing the look, use a built-in style's name to change its w
 `hidden` to leave them out. The built-in styles themselves come with the app, so updates can improve them. A
 new or changed style gets its thumbnail made the next time the panel opens (ComfyUI must be running).
 
-**Presets**: under **Fix ▾ › Presets** are ready-made edits; clicking one runs it straight away
+**One-click edits** (Restore old photo, Colorize, Harmonize, Relight, Sky and the portrait ones under **Fix ▾**,
+reflections under **Remove ▾**): clicking one runs it straight away
 (what's typed in the prompt box is left alone). With nothing selected they work on the whole image; with a selection,
 only there.
 
@@ -395,12 +402,12 @@ Typing in the prompt steers the light ("golden hour light", "moody, low key"). Y
 choose from. How far the light and colour may change is `enhance_strength` in the settings file (0.35).
 
 **Select ▾** (needs the SAM 3 model above): with nothing selected, type what you're after in the prompt box
-("dog", "boat", "red car"), then open **Select ▾** or **Fix ▾**:
+("dog", "boat", "red car"), then open **Select ▾** or **Remove ▾**:
 
 - **Select ▾ › “dog”** selects every dog it finds; **Sky** and **People** work without typing.
-- **Fix ▾ › Remove › “dog”**, **People** or **Cars** finds them, selects them and fills them away like Remove (you choose
+- **Remove ▾ › “dog”**, **People** or **Cars** finds them, selects them and fills them away like Remove (you choose
   from the results as usual). Only the found shapes are redrawn, not a box around them.
-- **Select ▾ › Remove background** puts a layer mask on the active layer that hides everything but the main subject
+- **Remove ▾ › Remove background** puts a layer mask on the active layer that hides everything but the main subject
   (found by BiRefNet: `birefnet.safetensors` in `ComfyUI/models/background_removal/`, from
   [Comfy-Org/BiRefNet](https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors),
   424 MB). Type something first (*dog*) and it becomes **Remove background, keep “dog”**, found by SAM 3. Nothing is
@@ -410,7 +417,7 @@ choose from. How far the light and colour may change is `enhance_strength` in th
 worked out from the picture's own pixels, so nothing is redrawn and faces, text and products stay exactly as they
 are). Each arrives as a new layer:
 
-- **Fix ▾ › Depth › Lens blur: subject sharp** blurs the rest more the further it is from the main subject, like a
+- **Fix ▾ › Blur & haze › Lens blur: subject sharp** blurs the rest more the further it is from the main subject, like a
   wide-open lens. Type a thing first ("the dog") for **Lens blur: “the dog” sharp** to choose what stays in focus.
 - **Haze in the distance** and **Fog** fade the far parts into the air, thicker the further away.
 - **Select ▾ › By distance › Foreground** or **Background** selects what's near or what's far, no words needed.

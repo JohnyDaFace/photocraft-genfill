@@ -278,12 +278,13 @@ class App:
         sep()
 
         # actions: the ones that fit the current mode are shown
-        self.rm_btn = button(icon="eraser", text="Remove", kind="outline", command=lambda: self.start("remove"),
-                             tooltip="Remove what's selected (type what it is for better results)")
+        self.rm_btn = button(icon="eraser", text="Remove", kind="outline", chevron=True, command=self.remove_menu,
+                             tooltip="Take things out: what's selected or named, people, cars, the background, "
+                                     "reflections")
         self.sel_btn = button(icon="target", text="Select", kind="outline", chevron=True, command=self.select_menu,
-                              tooltip="Find things by name (SAM 3) and select them, or remove the background")
+                              tooltip="Select things by name (SAM 3) or by distance; nothing in the picture changes")
         self.fix_btn = button(icon="wand", text="Fix", kind="outline", chevron=True, command=self.fix_menu,
-                              tooltip="Remove things, fix faces, depth (lens blur, haze), enhance, and one-click presets")
+                              tooltip="Enhance, restore, colorize, faces, and change the look: light, sky, blur")
         self.size_btn = button(icon="expand", text="Resize", kind="outline", chevron=True, command=self.resize_menu,
                                tooltip="Expand the canvas, or upscale to a bigger copy")
         self.create_btn = button(icon="create", text="Create", kind="outline", chevron=True, command=self.create_menu,
@@ -316,7 +317,7 @@ class App:
         for b in self.actions:
             b.pack_forget()
         shown = {"selection": [self.rm_btn, self.fix_btn, self.gen_btn],
-                 "image": [self.sel_btn, self.fix_btn, self.size_btn, self.create_btn, self.gen_btn],
+                 "image": [self.sel_btn, self.rm_btn, self.fix_btn, self.size_btn, self.create_btn, self.gen_btn],
                  "empty": [self.create_btn, self.gen_btn]}[self.mode]
         if (self.last_results is not None or self.tagged) and self.picker is None and not self.busy \
                 and self.mode != "empty":
@@ -424,18 +425,13 @@ class App:
             items.append(("info", "Prompts you use appear here"))
         self._menu(self.prompt, items)
 
-    def preset_items(self) -> list:
-        """The presets, grouped ("Sky: ..." under Sky), for the Fix menu."""
-        items, groups = [], {}
+    def preset_items(self, group: str) -> list:
+        """The presets named "<group>: …" (Sky, Relight, Portrait, Remove reflections), as menu items."""
+        items = []
         for name, _ in presets.PRESETS:
-            group, _, label = name.partition(": ")
-            if label:
-                if group not in groups:
-                    groups[group] = []
-                    items.append(("sub", group, groups[group]))
-                groups[group].append(("item", label[:1].upper() + label[1:], lambda n=name: self.use_preset(n)))
-            else:
-                items.append(("item", name, lambda n=name: self.use_preset(n)))
+            head, _, label = name.partition(": ")
+            if label and head == group:
+                items.append(("item", label[:1].upper() + label[1:], lambda n=name: self.use_preset(n)))
         return items
 
     def _set_style(self, name: str) -> None:
@@ -569,41 +565,65 @@ class App:
                   (lambda: self.start("select", what=typed)) if typed else hint),
                  ("item", "Sky", lambda: self.start("select", what=FIND["sky"][0], label=FIND["sky"][1])),
                  ("item", "People", lambda: self.start("select", what=FIND["people"][0], label=FIND["people"][1])),
-                 ("sep",), ("header", "Cut out"),
-                 ("item", f"Remove background, keep “{short}”" if typed else "Remove background",
-                  lambda: self.start("cutout", what=typed)),  # nothing typed: the main subject
                  ("sep",), ("header", "By distance"),
                  ("item", "Foreground (what's near)", lambda: self.start("depth_select", choice="foreground")),
                  ("item", "Background (what's far)", lambda: self.start("depth_select", choice="background"))]
         self._menu(self.sel_btn, items)
 
-    def fix_menu(self) -> None:
+    def remove_menu(self) -> None:
+        """Everything that takes something out of the picture."""
         typed, short, hint = self._typed()
-        remove = [("item", f"“{short}”" if typed else "What you type…",
-                   (lambda: self.start("remove_things", what=typed)) if typed else hint),
-                  ("item", "People", lambda: self.start("remove_things", what=FIND["people"][0],
-                                                        label=FIND["people"][1])),
-                  ("item", "Cars", lambda: self.start("remove_things", what=FIND["cars"][0], label=FIND["cars"][1]))]
+        preset = lambda name: lambda: self.use_preset(name)  # noqa: E731
+        if self.mode == "selection":
+            items = [("header", "Remove"),
+                     ("item", "What's selected", lambda: self.start("remove")),
+                     ("info", "Type what it is for a cleaner result")]
+        else:
+            items = [("header", "Remove"),
+                     ("item", f"“{short}”" if typed else "What you type…",
+                      (lambda: self.start("remove_things", what=typed)) if typed else hint),
+                     ("item", "People", lambda: self.start("remove_things", what=FIND["people"][0],
+                                                           label=FIND["people"][1])),
+                     ("item", "Cars", lambda: self.start("remove_things", what=FIND["cars"][0],
+                                                         label=FIND["cars"][1])),
+                     ("sep",), ("header", "Background"),
+                     ("item", f"Remove background, keep “{short}”" if typed else "Remove background",
+                      lambda: self.start("cutout", what=typed))]  # nothing typed: the main subject
+        items += [("sep",), ("header", "Reflections"),
+                  ("item", "On windows", preset("Remove reflections: windows")),
+                  ("item", "On glasses", preset("Remove reflections: glasses"))]
+        self._menu(self.rm_btn, items)
+
+    def fix_menu(self) -> None:
+        """What improves the picture or changes its look (taking things out is under Remove)."""
+        typed, short, hint = self._typed()
+        preset = lambda name: lambda: self.use_preset(name)  # noqa: E731
         faces = [("item", "Sharpen faces", lambda: self.start("faces"))]
         if typed:  # only when picked: text left in the box must never change what plain Fix faces does
             faces.append(("item", f"As typed: “{short}”", lambda: self.start("faces", choice="typed")))
+        faces += self.preset_items("Portrait") + [("sep",)]
         if self.reference:  # the picture already chosen, by name, so it's never used by surprise
             name = Path(self.reference).name
             name = name if len(name) <= 28 else name[:27] + "…"
             faces.append(("item", f"Replace with {name}", lambda: self.start("faces", choice="reference")))
         faces.append(("item", "Replace with another photo…" if self.reference else "Replace with a photo…",
                       self._replace_face_with_photo))
-        lens = [("item", "Lens blur: subject sharp", lambda: self.start("depth", choice="blur"))]
+        blur = [("item", "Lens blur: subject sharp", lambda: self.start("depth", choice="blur"))]
         if typed:  # focus on the typed thing only when picked
-            lens.append(("item", f"Lens blur: “{short}” sharp", lambda: self.start("depth", choice="blur", what=typed)))
-        lens += [("item", "Haze in the distance", lambda: self.start("depth", choice="haze")),
+            blur.append(("item", f"Lens blur: “{short}” sharp", lambda: self.start("depth", choice="blur", what=typed)))
+        blur += [("item", "Portrait lens (redrawn)", preset("Background blur (portrait lens)")),
+                 ("item", "Haze in the distance", lambda: self.start("depth", choice="haze")),
                  ("item", "Fog", lambda: self.start("depth", choice="fog"))]
         items = [("header", "Fix"),
-                 ("sub", "Remove", remove),
-                 ("sub", "Faces", faces),
-                 ("sub", "Depth", lens),
                  ("item", "Enhance: crisper, better light", lambda: self.start("enhance")),
-                 ("sep",), ("header", "Presets")] + self.preset_items()
+                 ("item", "Restore old photo", preset("Restore old photo")),
+                 ("item", "Colorize black & white", preset("Colorize black & white")),
+                 ("item", "Harmonize (select the pasted object)", preset("Harmonize (select the pasted object)")),
+                 ("sub", "Faces", faces),
+                 ("sep",), ("header", "Change the look"),
+                 ("sub", "Relight", self.preset_items("Relight")),
+                 ("sub", "Sky", self.preset_items("Sky")),
+                 ("sub", "Blur & haze", blur)]
         self._menu(self.fix_btn, items)
 
     def _replace_face_with_photo(self) -> None:
