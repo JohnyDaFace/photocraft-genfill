@@ -59,7 +59,7 @@ DEFAULT_STYLES: list[tuple[str, str]] = [
      "fine natural grain, timeless classic look."),
     ("Film noir",
      "1940s film noir still, black and white, hard low light through venetian blinds casting striped shadows, "
-     "deep inky blacks, smoke and haze, rain-slick streets, mysterious tension."),
+     "deep inky blacks, drifting smoke and haze, fine film grain, mysterious tension."),
     ("Instant photo",
      "Instant film photograph with a thick white border, soft dreamy focus, faded warm colours, gentle light "
      "leaks and a slight vignette, casual candid feel."),
