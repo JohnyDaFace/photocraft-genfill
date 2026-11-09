@@ -866,7 +866,16 @@ class App:
 
     def _generate(self, prompt, settings, status, progress, cancel, remove=False, reference=None, name=None):
         ref = load_reference(reference) if reference and not remove else None
-        results = generate(prompt, settings, status, progress, cancel, reference=ref, remove=remove, name=name)
+        try:
+            results = generate(prompt, settings, status, progress, cancel, reference=ref, remove=remove, name=name)
+        except UserFacingError as e:
+            # The bar thought a picture was open but none is (its view of PhotoCraft can lag): do what Generate
+            # does with nothing open and create one, with the same prompt, style, angle and reference.
+            if "no document open" not in str(e) or remove or name or not prompt.strip():
+                raise
+            self.events.put(("mode", "empty"))
+            status(f"No picture open: creating a {settings.create_choice} picture…")
+            results = create(settings.create_choice, prompt, settings, status, progress, cancel, reference=ref)
         return self._offer(results, settings, status)
 
     def _offer(self, results, settings, status):
