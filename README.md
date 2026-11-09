@@ -31,7 +31,7 @@ FLUX.2 [klein]:
 - **Enhance** (in Upscale ▾) gives back the same picture at the same size, crisper and better lit, like a
   professional camera shot, as a layer you can fade or mask.
 - **Upscale** (2× or 4×) redraws the whole image larger with new detail and opens it as a new document.
-- **Styles** (the palette icon): 57 looks in tabs (Photo, Portrait, Product, Art, Eras) that stay on for Create
+- **Styles** (the palette icon): 73 looks in tabs (Photo, Portrait, Product, Art, Design, Eras) that stay on for Create
   and whole-image edits. With nothing typed, Generate turns a photo into that style. Add **Angles** on top:
   low angle, bird's-eye, from behind, wide shot…
 - **Results are kept**: close the choice window and reopen it later, even days later, from *Other results*.
@@ -234,7 +234,7 @@ versions that keep its layout and vary the details; the one you picked stays as 
 **Style**: the palette icon next to the prompt opens thumbnails of each look, in tabs:
 
 - **Photo**: Professional photo, Film photo, Cinematic, Movie poster, Golden hour, Low-key, Black & white
-  film, Instant photo, 2000s digital, Fashion editorial, Interior bright (a real-estate look for room photos).
+  film, Film noir, Instant photo, 2000s digital, Fashion editorial, Interior bright (a real-estate look for room photos).
 - **Portrait**: close-up head-and-shoulders looks, each a classic lighting setup: Editorial, Corporate headshot,
   Actor headshot, Rembrandt light, Beauty light, Split light, Rim light, Window light, Colour gels, B&W portrait,
   Colour backdrop. Good for turning a phone selfie into a studio portrait.
@@ -244,8 +244,10 @@ versions that keep its layout and vary the details; the one you picked stays as 
   With a model: Model studio, Model close-up, In hand, Model lifestyle, Model outdoors put a woman holding
   your product in different poses, from beside her face in the studio to a sunny street.
 - **Art**: Anime, Japanese ink, Watercolour, Oil painting, Pencil sketch, Comic book, 3D animation, Fantasy art,
-  Neon cyberpunk, Toy figure, Claymation, Pixel art, Stained glass, Retro 80s, Surreal.
-- **Eras**: Victorian, 1920s, 1950s, 1970s, Future: the clothes, the setting and the photography of the time.
+  Neon cyberpunk, Toy figure, Claymation, Pixel art, Stained glass, Retro 80s, Surreal, Gouache, Charcoal,
+  Ink illustration, Impressionism, Manga, Chibi, Picture book, Gongbi, Low-poly.
+- **Design**: Art Deco, Art Nouveau, Bauhaus, Minimalist, Vintage poster: graphic looks from design movements.
+- **Eras**: Victorian, 1920s, 1950s, 1970s, Retro-futurism, Future: the clothes, the setting and the photography of the time.
 
 - **Angles**: Low angle, High angle, Bird's-eye, Worm's-eye, Dutch tilt, Close-up, Side profile, From behind,
   Wide shot, Fisheye, Drone aerial. An angle is chosen on its own and **adds to the style**: the bar shows both,

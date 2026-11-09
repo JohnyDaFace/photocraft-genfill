@@ -88,7 +88,7 @@ def test_the_panel_has_a_tab_per_kind_each_starting_with_off():
     from genfill.style_panel import groups, tab_of
     every = styles.DEFAULT_STYLES + [("Mine", "Pastel.")]
     got = groups(every)
-    assert [t for t, _ in got] == ["Photo", "Portrait", "Product", "Art", "Eras", "Yours", "Angles"]
+    assert [t for t, _ in got] == ["Photo", "Portrait", "Product", "Art", "Design", "Eras", "Yours", "Angles"]
     assert all(g[0][0] == "Off" for _, g in got)
     tab = dict(got)
     assert "Rembrandt light" in dict(tab["Portrait"]) and "Studio white" in dict(tab["Product"])
@@ -96,7 +96,9 @@ def test_the_panel_has_a_tab_per_kind_each_starting_with_off():
     assert tab["Yours"][1] == ("Mine", "Pastel.")
     assert tab_of("Luxury", every) == "Product" and tab_of("", every) == "Photo" and tab_of("Mine", every) == "Yours"
     assert tab_of("Split light", every) == "Portrait"
-    assert [t for t, _ in groups(styles.DEFAULT_STYLES)] == ["Photo", "Portrait", "Product", "Art", "Eras",
+    assert tab_of("Bauhaus", every) == "Design" and tab_of("Gouache", every) == "Art"
+    assert tab_of("Film noir", every) == "Photo" and tab_of("Retro-futurism", every) == "Eras"
+    assert [t for t, _ in groups(styles.DEFAULT_STYLES)] == ["Photo", "Portrait", "Product", "Art", "Design", "Eras",
                                                              "Angles"]
     assert tab_of("Low angle", every) == "Photo"  # the panel opens on the style's tab, never on Angles
 

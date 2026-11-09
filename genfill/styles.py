@@ -57,6 +57,9 @@ DEFAULT_STYLES: list[tuple[str, str]] = [
     ("Black & white film",
      "Black and white photograph on Ilford HP5 film, deep blacks and luminous highlights, rich mid-tone contrast, "
      "fine natural grain, timeless classic look."),
+    ("Film noir",
+     "1940s film noir still, black and white, hard low light through venetian blinds casting striped shadows, "
+     "deep inky blacks, smoke and haze, rain-slick streets, mysterious tension."),
     ("Instant photo",
      "Instant film photograph with a thick white border, soft dreamy focus, faded warm colours, gentle light "
      "leaks and a slight vignette, casual candid feel."),
@@ -198,6 +201,49 @@ DEFAULT_STYLES: list[tuple[str, str]] = [
     ("Surreal",
      "Surreal dreamlike artwork, impossible scale and floating objects, uncanny calm atmosphere, crisp detail, "
      "soft otherworldly light."),
+    ("Gouache",
+     "Gouache painting on thick paper, flat opaque layers of matte colour, crisp shapes with soft painterly edges, "
+     "a warm limited palette and visible confident brush marks, like a mid-century storybook illustration."),
+    ("Charcoal",
+     "Expressive charcoal drawing on rough off-white paper, deep velvety blacks, smudged soft shading, bold "
+     "gestural strokes and white chalk highlights, black and grey only."),
+    ("Ink illustration",
+     "Pen and ink illustration, crisp black linework with fine cross-hatching and stippling for the shadows, "
+     "on clean white paper, detailed like a classic book engraving, black ink only."),
+    ("Impressionism",
+     "Impressionist oil painting in the manner of Monet, short broken brushstrokes of pure colour, shimmering "
+     "dappled sunlight, soft edges, luminous pastel light and colourful shadows."),
+    ("Manga",
+     "Black and white manga illustration, crisp ink line art, screentone shading, speed lines and dramatic "
+     "contrast, expressive eyes, dynamic composition like a printed manga page, no speech bubbles."),
+    ("Chibi",
+     "Cute 2D chibi illustration, characters with big heads, tiny bodies and huge sparkling eyes, thick clean "
+     "outlines, flat soft pastel colours, playful sticker-like look."),
+    ("Picture book",
+     "Children's picture book illustration, soft coloured pencil and watercolour, gentle rounded shapes, warm "
+     "cosy palette, whimsical friendly characters and a hand-made textured paper feel."),
+    ("Gongbi",
+     "The whole picture painted as a traditional Chinese gongbi painting on silk: people, buildings and ground "
+     "drawn with meticulous fine ink outlines and filled with flat delicate mineral colours, on aged beige silk."),
+    ("Low-poly",
+     "Low-poly 3D model render: people, buildings and ground all made of large visible flat triangular polygons "
+     "with sharp faceted edges, each facet a single flat colour, like a stylised 3D game from 2015."),
+    # design: graphic looks from art and design movements
+    ("Art Deco",
+     "Art Deco illustration, bold symmetrical geometric shapes, sunburst and stepped patterns, black, cream and "
+     "gold with metallic accents, sleek elongated forms, glamorous 1920s poster elegance."),
+    ("Art Nouveau",
+     "Art Nouveau illustration in the manner of Mucha, flowing organic lines, ornate floral borders and a halo "
+     "frame, soft muted pastel colours, elegant decorative poster style."),
+    ("Bauhaus",
+     "Bauhaus graphic design, the scene built from bold circles, squares and triangles, primary red, yellow and "
+     "blue with black on off-white, flat colour, strict grid and clean modernist composition."),
+    ("Minimalist",
+     "Minimalist flat illustration, a few simple shapes, lots of calm empty space, a soft muted palette of two or "
+     "three colours, clean edges and no texture, quiet and elegant."),
+    ("Vintage poster",
+     "Vintage travel poster illustration from the 1930s, flat bold shapes and limited screen-printed colours, "
+     "slightly faded paper texture, strong graphic composition. No text, no lettering anywhere."),
     # eras: the clothes, setting and the photography of the time change; the people and the moment stay
     ("Victorian",
      "Victorian era photograph from the 1880s, clothing and hair of the time, sepia-toned glass plate "
@@ -211,6 +257,9 @@ DEFAULT_STYLES: list[tuple[str, str]] = [
     ("1970s",
      "1970s photograph, clothing and hair of the time, warm orange and brown tones, faded film colours, "
      "soft grain and natural light."),
+    ("Retro-futurism",
+     "Retro-futuristic scene as imagined in the 1960s space age, chrome and pastel streamlined machines, "
+     "bubble-glass domes, rocket-age clothing, saturated vintage print colours and soft grain."),
     ("Future",
      "Futuristic photograph from the year 2090, sleek high-tech clothing, clean architecture with glowing "
      "panels, cool white and blue light, holographic details, polished sci-fi film look."),
@@ -222,10 +271,12 @@ PRODUCT = {"Studio white", "Hero shot", "Flat lay", "Lifestyle", "Luxury", "Podi
 MODEL = {"Model studio", "Model close-up", "In hand", "Model lifestyle", "Model outdoors"}
 ART = {"Anime", "Japanese ink", "Watercolour", "Oil painting", "Pencil sketch", "Comic book", "3D animation",
        "Fantasy art", "Neon cyberpunk", "Toy figure", "Claymation", "Pixel art", "Stained glass", "Retro 80s",
-       "Surreal"}
+       "Surreal", "Gouache", "Charcoal", "Ink illustration", "Impressionism", "Manga", "Chibi", "Picture book",
+       "Gongbi", "Low-poly"}
+DESIGN = {"Art Deco", "Art Nouveau", "Bauhaus", "Minimalist", "Vintage poster"}
 PORTRAIT = {"Editorial", "Corporate headshot", "Actor headshot", "Rembrandt light", "Beauty light",
             "Split light", "Rim light", "Window light", "Colour gels", "B&W portrait", "Colour backdrop"}
-ERAS = {"Victorian", "1920s", "1950s", "1970s", "Future"}
+ERAS = {"Victorian", "1920s", "1950s", "1970s", "Retro-futurism", "Future"}
 
 # camera angles: on their own in the panel, and they add to the style that's on (angle first, then the look)
 ANGLES = [

@@ -1,4 +1,4 @@
-"""The Style panel: thumbnails of each style under the bar, in tabs (Photo, Portrait, Product, Art, Eras, Yours, then
+"""The Style panel: thumbnails of each style under the bar, in tabs (Photo, Portrait, Product, Art, Design, Eras, Yours, then
 Angles); click one to turn it on, Off (first in every tab) or clicking it again turns it off, Clear all turns off both. An angle is chosen apart from the style and
 adds to it. Opens on the active style's tab. Closes on a choice,
 Escape, a click elsewhere or when the app loses focus, like the bar's menus."""
@@ -25,9 +25,9 @@ def groups(every: list[tuple[str, str]]) -> list[tuple[str, list[tuple[str, str]
     off = [(style_thumbs.OFF, "")]
     kind = lambda n: "Yours" if n not in BUILT_IN else "Product" if n in styles.PRODUCT \
         else "Portrait" if n in styles.PORTRAIT else "Art" if n in styles.ART \
-        else "Eras" if n in styles.ERAS else "Photo"  # noqa: E731
+        else "Design" if n in styles.DESIGN else "Eras" if n in styles.ERAS else "Photo"  # noqa: E731
     tabs = [(t, [s for s in every if kind(s[0]) == t])
-            for t in ("Photo", "Portrait", "Product", "Art", "Eras", "Yours")]
+            for t in ("Photo", "Portrait", "Product", "Art", "Design", "Eras", "Yours")]
     return [(t, off + g) for t, g in tabs if g] + [(ANGLES_TAB, off + styles.ANGLES)]
 
 
