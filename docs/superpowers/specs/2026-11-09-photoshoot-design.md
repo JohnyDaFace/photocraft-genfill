@@ -124,7 +124,7 @@ Builder's call recorded here: no detection, the chosen shoot sets the kind.)
   sentence was added after real runs: without it, follow shots copied the hero's framing.)
 - `keep` for products: "Keep the product exactly as in image 1: the same shape, colours, materials and the exact
   same label text and logo, letter for letter." For people: "Keep the exact same person as in image 1: the same
-  face, facial features, eye colour, skin, hair and beard." (These worked in the spike; `styles.KEEP_PRODUCT`
+  face, facial features, eye colour, skin and hair, exactly as they are." (No "beard": it gave women beards.) (These worked in the spike; `styles.KEEP_PRODUCT`
   and `KEEP_FACE` are close cousins and may be reused if the wording fits.)
 - Styles and angles from the Style panel are **not** applied to a photoshoot (the shoot already is the look).
 - Count: `shoot_count` selects 4, 8 or 12; shot lists have 12 entries and the first N are used, so 4 is a

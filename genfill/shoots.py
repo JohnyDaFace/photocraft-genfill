@@ -130,8 +130,8 @@ NOUN = {"product": "product", "people": "person"}
 KEEP = {
     "product": "Keep the product exactly as in image 1: the same shape, colours, materials and the exact same "
                "label text and logo, letter for letter.",
-    "people": "Keep the exact same person as in image 1: the same face, facial features, eye colour, skin, hair "
-              "and beard.",
+    "people": "Keep the exact same person as in image 1: the same face, facial features, eye colour, skin and hair, "
+              "exactly as they are.",
 }
 
 
