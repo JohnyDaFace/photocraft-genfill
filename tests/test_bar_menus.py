@@ -79,3 +79,16 @@ def test_fix_depth_focuses_on_the_typed_thing_only_when_picked(tmp_path, monkeyp
     bar2 = _bar(tmp_path, monkeypatch)
     App.fix_menu(bar2)
     assert len({i[1]: i[2] for i in bar2.menus[0][1] if i[0] == "sub"}["Depth"]) == 3
+
+
+def test_restart_frees_the_port_and_starts_a_new_bar(monkeypatch):
+    import sys
+    from genfill import app as app_mod
+    started, events = [], []
+    monkeypatch.setattr(app_mod.subprocess, "Popen", lambda args, **kw: started.append(args))
+    monkeypatch.setattr(sys, "argv", ["GenFill.pyw", app_mod.autostart.BACKGROUND])
+    bar = SimpleNamespace(server=SimpleNamespace(close=lambda: events.append("closed")),
+                          quit=lambda: events.append("quit"), say=lambda *a, **k: None)
+    App.restart(bar)
+    assert events == ["closed", "quit"]
+    assert started == [[sys.executable, "GenFill.pyw"]]  # shows itself, not a hidden Windows start

@@ -15,7 +15,8 @@ LABELS = {"unet": "Flux 2 Klein model", "clip": "Text encoder", "vae": "VAE"}
 
 
 class SettingsDialog(tk.Toplevel):
-    def __init__(self, master: tk.Tk, settings: Settings, palette: theme.Palette, fonts: dict, on_save):
+    def __init__(self, master: tk.Tk, settings: Settings, palette: theme.Palette, fonts: dict, on_save,
+                 on_restart=None):
         super().__init__(master)
         self.s, self.p, self.f, self.on_save = settings, palette, fonts, on_save
         self.title("Settings – Generative Fill for PhotoCraft")
@@ -88,6 +89,9 @@ class SettingsDialog(tk.Toplevel):
                          height=24).pack(side="left")
         theme.PillButton(bottom, "Undo PhotoCraft setup", self.undo_setup, p, f["small"], kind="quiet",
                          height=24).pack(side="left", padx=(4, 0))
+        if on_restart:
+            theme.PillButton(bottom, "Restart GenFill", lambda: (self.destroy(), on_restart()), p, f["small"],
+                             kind="quiet", height=24).pack(side="left", padx=(4, 0))
         theme.PillButton(bottom, "Save", self.save, p, f["button"], kind="primary", min_width=80).pack(side="right")
         theme.PillButton(bottom, "Cancel", self.destroy, p, f["button"], min_width=80).pack(side="right", padx=8)
         self.load_models()

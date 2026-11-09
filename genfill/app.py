@@ -169,6 +169,7 @@ class StatusPill(tk.Toplevel):
 class App:
     def __init__(self, root: tk.Tk, background: bool = False):
         self.root = root
+        self.server: socket.socket | None = None  # the one-bar port, set by main()
         self.background = background  # started with Windows: hidden until PhotoCraft opens
         self.visible = True
         self.photocraft_seen = False  # connected at least once since shown (so a close can hide it)
@@ -670,6 +671,7 @@ class App:
         items.append(("sep",))
         if BORDERLESS:
             items.append(("item", "Minimize", lambda: minimize(self.root), "chev"))
+        items.append(("item", "Restart GenFill", self.restart, "history"))
         items.append(("item", "Quit", self.quit, "x"))
         self._menu(self.more_btn, items, right=True)
 
@@ -1129,7 +1131,7 @@ class App:
             self.count_btn.configure_button(text=self._count_text())
             self.say("Settings saved. Checking connections…", None)
             threading.Thread(target=self.check_connections, daemon=True).start()
-        SettingsDialog(self.root, Settings.load(), self.p, self.fonts, saved)
+        SettingsDialog(self.root, Settings.load(), self.p, self.fonts, saved, on_restart=self.restart)
 
     # -- following PhotoCraft ------------------------------------------------------------------------
     def follow_photocraft(self, running: bool) -> None:
@@ -1183,6 +1185,18 @@ class App:
         self.cancel.set()
         self.root.destroy()
 
+    def restart(self) -> None:
+        """Close this bar and start a fresh one (it picks up new settings and code)."""
+        if self.server is not None:
+            self.server.close()  # free the one-bar port so the new bar can claim it
+        args = [a for a in sys.argv if a != autostart.BACKGROUND]
+        try:
+            subprocess.Popen([sys.executable, *args], cwd=os.getcwd(), close_fds=True)
+        except OSError as e:
+            self.say(f"Couldn't restart: {e}", BAD)
+            return
+        self.quit()
+
 
 INSTANCE_PORT = 47861  # one bar per user: a second start asks the running one to show itself
 
@@ -1223,6 +1237,7 @@ def main() -> None:
         return  # the bar is already running
     root = tk.Tk()
     app = App(root, background=autostart.BACKGROUND in sys.argv)
+    app.server = server
     threading.Thread(target=_listen, args=(server, app.events), daemon=True).start()
     root.mainloop()
 
