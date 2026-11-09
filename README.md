@@ -206,8 +206,13 @@ Restart ComfyUI after adding them. If your files have other names (for example a
 **Mac note:** fp8 files may not run on Apple Silicon. If ComfyUI reports an fp8 error, use the bf16 versions
 of the model and text encoder from the same Hugging Face pages and select them in Settings.
 
-**Licence note:** this app is MIT-licensed, but the FLUX.2 [klein] 9B weights come with Black Forest Labs'
+**Licence note:** this app is licensed under the GNU GPL 3.0 (see [LICENSE](LICENSE)): you may use, change and share
+it, and anything you share that is built on it must stay open under the same licence, with the original notice
+kept. Earlier downloads were released under MIT. The FLUX.2 [klein] 9B weights come with Black Forest Labs'
 own licence, which is **non-commercial**. Read it on the model page before using results commercially.
+
+Copyright © 2026 Yiannis (JohnyDaFace). Bar icons from [Lucide](https://lucide.dev) (ISC licence, see
+`assets/icons/LICENSE`).
 
 ## Install
 
