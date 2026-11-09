@@ -112,3 +112,11 @@ def test_keep_colors_undoes_a_tint_but_keeps_what_the_edit_changed():
     assert out.shape[2] == 4
     assert np.abs(out[60:, 60:, :3].astype(float) - orig[60:, 60:]).mean() < 2.5   # tint gone
     assert out[:40, :40, :3].mean() > 200                                          # the change stays
+
+
+def test_keep_colors_leaves_an_edit_that_changed_everything_alone():
+    from genfill.imaging import keep_colors
+    rng = np.random.default_rng(2)
+    orig = Image.fromarray(rng.integers(0, 120, (90, 120, 3)).astype(np.uint8))
+    edited = Image.fromarray(rng.integers(130, 255, (90, 120, 3)).astype(np.uint8)).convert("RGBA")
+    assert keep_colors(orig, edited) is edited     # nothing stayed the same: no drift to measure, no cast added

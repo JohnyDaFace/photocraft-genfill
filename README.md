@@ -281,7 +281,7 @@ only there.
 | Harmonize | Select an object you pasted in: its light, colour and shadows are matched to the photo |
 | Colorize black & white, Restore old photo | Old family photos |
 | Sky: golden sunset / clear blue / dramatic storm | Replaces the sky and adjusts the light to match |
-| Remove reflections: windows / glasses | Shop windows, glass doors, display cases; eyes hidden behind shiny lenses. The colours stay the original's. Busy reflections (people, shop fronts) may only fade: select just the glass so nothing else changes, and make a few results to pick from |
+| Remove reflections: windows / glasses | Shop windows, glass doors, display cases; eyes hidden behind shiny lenses. The colours stay the original's, and your LoRAs are not used for these. Busy reflections (people, shop fronts) may only fade: select just the glass so nothing else changes, and make a few results to pick from |
 | Background blur | A portrait-lens look; the subject stays sharp |
 | Relight: golden hour / soft studio / night | Changes the lighting of the whole scene |
 | Portrait: smile, look at the camera, retouch skin, younger, older | One person in the photo; select the face for the most control |

@@ -23,9 +23,11 @@ PRESETS: list[tuple[str, str]] = [
     ("Sky: dramatic storm",
      "Replace the sky with dark dramatic storm clouds, and adjust the scene's light to match it." + KEEP),
     ("Remove reflections: windows",
-     "Remove the reflections in the window glass: the mirrored street, cars, buildings, sky and sunlight on the "
-     "glass disappear, so you see clearly through the glass to what is behind it, like a photo taken with a "
-     "polarizing filter. Keep the glass, the window frame and everything behind the glass exactly the same."),
+     "The photo looks through a window into a room. Remove only the reflection on the glass: the faint, "
+     "see-through mirror image of the outdoor scene in front of the window (the street, pavement, cars, poles, "
+     "buildings across the road, sky). Keep the room behind the glass and everything in it, its people, furniture, "
+     "bottles, signs and warm lights, and make it clearer. Keep the window frame, the colours and the light the "
+     "same."),
     ("Remove reflections: glasses",
      "Remove the glare and reflections on the lenses of the glasses so the eyes behind them are clearly visible, "
      "as if photographed with a polarizing filter. Keep the frames, the lenses, the eye colour, the skin tone and "
@@ -55,6 +57,9 @@ PRESETS: list[tuple[str, str]] = [
 # Presets that should change only some things, not the picture's colours: whole-image results are colour-matched
 # back to the original afterwards (Klein drifts warmer and darker when it redraws everything).
 KEEP_COLOURS = {"Remove reflections: windows", "Remove reflections: glasses"}
+# Presets that run without the user's LoRAs: a LoRA trained on something else holds the picture as it was,
+# so reflections stay (tested: with one the reflected car and street remained, without they went).
+NO_LORAS = {"Remove reflections: windows", "Remove reflections: glasses"}
 
 PLACEHOLDER = "Presets…"
 

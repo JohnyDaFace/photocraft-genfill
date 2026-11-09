@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable
 
@@ -226,6 +226,8 @@ def generate(prompt: str, settings: Settings, status: Status, progress: Progress
     area first was tried and is worse: Klein invents a new object to fill the hole.) `name`: what the
     layer's name says instead of the prompt (a preset's name)."""
     pc, comfy = _clients(settings, pc, comfy)
+    if name in presets.NO_LORAS:
+        settings = replace(settings, loras=[])
     label = prompt.strip()
     count = max(1, min(MAX_VARIATIONS, count or settings.variations))
     try:

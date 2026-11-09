@@ -272,27 +272,36 @@ def blend_mask(rgba: Image.Image, selection: Bounds) -> Image.Image:
     return m.filter(ImageFilter.GaussianBlur(BLEND_FEATHER / 3))
 
 
+KEEP_COLORS_CLOSE = 30      # summed RGB levels: a pixel this close to the original after the fit "stayed the same"
+KEEP_COLORS_MIN_SAME = 0.35  # less of the picture than this stayed the same: nothing to measure the drift on
+
+
 def keep_colors(original: Image.Image, edited: Image.Image) -> Image.Image:
     """An edit of the whole picture with the original's colours: a gain and offset per channel, fitted on the
     pixels the edit barely changed (the worst-fitting half is left out, three times), applied everywhere.
-    The edit's own changes stay; only its overall tint and brightness drift is undone. Keeps `edited`'s alpha."""
+    The edit's own changes stay; only its overall tint and brightness drift is undone. When the edit changed
+    most of the picture (a reflection that covered everything), there is no reliable part to measure on and
+    the edit is returned as it is: correcting then would pull the new colours back to the old ones.
+    Keeps `edited`'s alpha."""
     o = np.asarray(original.convert("RGB").resize(edited.size), np.float32).reshape(-1, 3)
     g = np.asarray(edited.convert("RGB"), np.float32).reshape(-1, 3)
     keep = np.ones(len(o), bool)
     fit = g
     for _ in range(3):
         if keep.sum() < 64:
-            break
+            return edited
         cols = []
         for c in range(3):
-            if np.ptp(g[keep, c]) < 1:
-                cols.append(g[:, c])
-                continue
-            a, b = np.polyfit(g[keep, c], o[keep, c], 1)
-            cols.append(g[:, c] * float(np.clip(a, 0.5, 2.0)) + b)
+            x, y = g[keep, c], o[keep, c]
+            var = float(x.var())
+            gain = float(np.clip(((x - x.mean()) * (y - y.mean())).mean() / var, 0.8, 1.25)) if var > 1 else 1.0
+            offset = float(np.clip(y.mean() - gain * x.mean(), -40, 40))
+            cols.append(g[:, c] * gain + offset)
         fit = np.stack(cols, 1)
         err = np.abs(fit - o).sum(1)
         keep = err <= np.percentile(err, 50)
+    if (err < KEEP_COLORS_CLOSE).mean() < KEEP_COLORS_MIN_SAME:
+        return edited
     rgb = Image.fromarray(np.clip(fit.reshape(edited.height, edited.width, 3) + 0.5, 0, 255).astype(np.uint8), "RGB")
     if edited.mode == "RGBA":
         rgb.putalpha(edited.getchannel("A"))

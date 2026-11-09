@@ -903,3 +903,16 @@ def test_naming_a_thing_wins_over_a_style_left_on(tmp_path):
     r = generate("make the car red", s, lambda s: None, lambda f: None, threading.Event(), pc=pc, comfy=comfy,
                  count=1)
     assert r.masked and r.job.prompt == "make the car red"
+
+
+def test_reflection_presets_run_without_the_users_loras(tmp_path):
+    from dataclasses import replace as _r
+    pc = FakePC(_doc(), None)
+    comfy = FakeComfy()
+    settings = _r(_settings(tmp_path), loras=[{"name": "mine.safetensors", "strength": 1.0}])
+    generate("x", settings, lambda s: None, lambda f: None, threading.Event(), pc=pc, comfy=comfy, count=1,
+             name="Remove reflections: windows")
+    generate("x", settings, lambda s: None, lambda f: None, threading.Event(), pc=pc, comfy=comfy, count=1,
+             name="Relight: night")
+    lora_nodes = [[n for n in wf.values() if "lora" in str(n.get("class_type", "")).lower()] for wf in comfy.wfs]
+    assert lora_nodes[0] == [] and lora_nodes[1] != []

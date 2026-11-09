@@ -31,7 +31,7 @@ def test_an_unknown_preset_does_nothing():
 
 def test_reflection_presets_for_windows_and_glasses():
     from genfill.presets import prompt_for
-    assert "window glass" in prompt_for("Remove reflections: windows")
+    assert "Keep the room behind the glass" in prompt_for("Remove reflections: windows")
     assert "glasses" in prompt_for("Remove reflections: glasses")
 
 
