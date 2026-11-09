@@ -65,7 +65,7 @@ the PhotoCraft developers.
 
 ## See it in action
 
-All examples below were made with this app's own Generate, Remove, Expand and presets (FLUX.2 [klein] 9B, 4 steps).
+All examples below were made with this app's own Generate, Remove, Expand and one-click edits (FLUX.2 [klein] 9B, 4 steps).
 The dashed box is the selection. The starting pictures were
 made with the same model, so no real photos are involved.
 
@@ -81,7 +81,7 @@ made with the same model, so no real photos are involved.
 
 ![Expand: a 4:5 photo widened to 16:9](docs/showcase/expand.jpg)
 
-**Presets**: nothing selected, *Colorize black & white*, then *Sky: golden sunset*.
+**Fix ▾**: nothing selected, *Colorize black & white*, then *Sky › Golden sunset*.
 
 ![Colorize: an old black and white harbour photo in colour](docs/showcase/colorize.jpg)
 
@@ -122,9 +122,11 @@ The Style panel: click a thumbnail to turn it on, click it again to turn it off.
 
 ![The Style panel, Portrait tab](docs/showcase/style-panel.png)
 
-Not every try is a hit: that's why Generate makes several versions (3 by default) to pick from.
+The menus: **Remove ▾** with a thing typed, and **Fix ▾** with *Blur & haze* open.
 
 ![The Remove menu, and the Fix menu with Blur & haze open](docs/showcase/bar-menus.png)
+
+Not every try is a hit: that's why Generate makes several versions to pick from.
 
 ## What you need
 
@@ -254,17 +256,19 @@ The app is a small floating bar, like Photoshop's contextual task bar. It follow
 
 The prompt is on top, the buttons under it. At the left of the buttons is what Generate will use: **Style** (shows the
 look while one is on), **Reference** (a dot means a picture is set) and the **results count** (how many versions to
-choose from). At the right are the menus, by what you want to do: **Select** (find things), **Fix** (remove, faces,
-enhance, presets), **Resize** (expand, upscale) and **Create** (new picture, from a sketch, photoshoot). Drag the dots left of the prompt to move the bar; it
+choose from). At the right are the menus, by what you want to do: **Select** (find things), **Remove** (take
+things out), **Fix** (enhance, restore, faces, light, sky, blur), **Resize** (expand, upscale) and **Create** (new
+picture, from a sketch, photoshoot). Drag the dots left of the prompt to move the bar; it
 remembers where you put it. Messages appear in a small pill under the bar (click it to hide it). While it works,
 a thin line along the bottom shows progress and **Generate** turns into **Cancel** (or press Esc). The **⋯** menu
-has Settings, the PhotoCraft connection, the version and Quit.
+has the connections, Settings, the PhotoCraft connection, the version, Quit and, at the bottom, a Ko-fi button
+if you'd like to support the project.
 
 **Generate (fill a selection)**
 1. In PhotoCraft: select what to fill: the empty area after Image › Canvas Size, or something to replace or
    remove (hold Shift to add more areas).
 2. In the bar: optionally type what should appear ("remove it" works for taking things away), choose how many
-   results you want (1–4, the stacked-squares button), then click **Generate** (about 20–40 seconds per result on a 10 GB card).
+   results you want (1–4, the **results** button, for example *2 results ▾*), then click **Generate** (about 20–40 seconds per result on a 10 GB card).
 3. With more than one result, a **Choose a result** window shows them side by side: click the one you like (or
    press 1–4). **Discard all** adds nothing. With 1 result it goes straight in.
 4. A new layer "Generative Fill" appears with a soft mask. Paint on the mask to adjust, or Undo to remove it.
@@ -336,20 +340,20 @@ sentence or two describing the look, use a built-in style's name to change its w
 `hidden` to leave them out. The built-in styles themselves come with the app, so updates can improve them. A
 new or changed style gets its thumbnail made the next time the panel opens (ComfyUI must be running).
 
-**One-click edits** (Restore old photo, Colorize, Harmonize, Relight, Sky and the portrait ones under **Fix ▾**,
-reflections under **Remove ▾**): clicking one runs it straight away
+**One-click edits** (Restore old photo, Colorize, Harmonize, Relight, Sky, Blur & haze and the portrait ones
+under **Faces**, all in **Fix ▾**; reflections under **Remove ▾**): clicking one runs it straight away
 (what's typed in the prompt box is left alone). With nothing selected they work on the whole image; with a selection,
 only there.
 
-| Preset | Use it for |
+| Edit | Use it for |
 |---|---|
 | Harmonize | Select an object you pasted in: its light, colour and shadows are matched to the photo |
 | Colorize black & white, Restore old photo | Old family photos |
-| Sky: golden sunset / clear blue / dramatic storm | Replaces the sky and adjusts the light to match |
-| Remove reflections: windows / glasses | Shop windows, glass doors, display cases; eyes hidden behind shiny lenses. The colours stay the original's, and your LoRAs are not used for these. Busy reflections (people, shop fronts) may only fade: select just the glass so nothing else changes, and make a few results to pick from |
-| Background blur | A portrait-lens look; the subject stays sharp |
-| Relight: golden hour / soft studio / night | Changes the lighting of the whole scene |
-| Portrait: smile, look at the camera, retouch skin, younger, older | One person in the photo; select the face for the most control |
+| Sky › golden sunset / clear blue / dramatic storm | Replaces the sky and adjusts the light to match |
+| Remove ▾ › Reflections › on windows / on glasses | Shop windows, glass doors, display cases; eyes hidden behind shiny lenses. The colours stay the original's, and your LoRAs are not used for these. Busy reflections (people, shop fronts) may only fade: select just the glass so nothing else changes, and make a few results to pick from |
+| Blur & haze › Portrait lens (redrawn) | A portrait-lens look drawn by the model; the subject stays sharp. For a blur that leaves every pixel of the subject as it is, use *Lens blur* (see Depth below) |
+| Relight › golden hour / soft studio / night | Changes the lighting of the whole scene |
+| Faces › smile, look at the camera, retouch skin, younger, older | One person in the photo; select the face for the most control |
 
 Keep the selection as it is while choosing; if it changes, the window asks you to put it back or Generate again
 so the result can't land in the wrong place.
@@ -434,7 +438,9 @@ are). Each arrives as a new layer:
 
 The first use loads the depth model (about a minute); after that it takes a few seconds.
 
-- **Fix ▾ › Faces › Sharpen faces** finds every face and restores each one up close at high resolution: sharper eyes, lashes, skin
+**Faces** (Fix ▾ › Faces):
+
+- **Sharpen faces** finds every face and restores each one up close at high resolution: sharper eyes, lashes, skin
   and hair, and still the same person. With SeedVR2 installed (the Upscale model, see the model tables) it uses
   that, which keeps people most like themselves; otherwise FLUX partly redraws each face. They arrive as one
   layer holding just the faces with soft edges: lower its opacity or erase a face you'd rather keep. It ignores
