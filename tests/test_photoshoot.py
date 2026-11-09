@@ -281,3 +281,14 @@ def test_reshoot_places_nothing_before_a_pick(tmp_path):
     placed, layers = list(pc.placed), list(pc.layers)
     reshoot(s, print, print, threading.Event(), pc=pc, comfy=comfy)
     assert pc.placed == placed and pc.layers == layers and not hasattr(pc, "replaced")
+
+
+def test_photocraft_failing_while_placing_keeps_the_shots_as_files(tmp_path):
+    from genfill.photocraft_client import PhotoCraftError
+
+    class Gone(ShootPC):
+        def place_layer(self, rel, name, masked=True):
+            raise PhotoCraftError("PhotoCraft isn't answering.")
+    with pytest.raises(UserFacingError, match="8 shots are saved in"):
+        _shoot(tmp_path, ShootComfy(), Gone(_doc(), None, tmp_path))
+    assert len(list((tmp_path / "shoots").glob("*/shot_*.png"))) == 8

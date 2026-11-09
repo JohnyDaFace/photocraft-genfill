@@ -1001,7 +1001,7 @@ class App:
 
         def closed() -> None:
             self.picker = None
-            self._arrange()  # Other results can bring it back
+            self.finish()  # a job that ended in this window (Reshoot, More like this) leaves the bar busy
         if self.picker is not None:
             self.picker.dismiss()
         self.picker = Picker(self.root, results, self.p, self.fonts, picked, discarded,

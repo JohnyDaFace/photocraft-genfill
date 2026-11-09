@@ -124,7 +124,7 @@ HELP = ('Your photoshoots. Add one to "shoots" as {"name": "...", "kind": "produ
         "describe the place, light and colour grade in a sentence or two. Use a built-in shoot's name to change its "
         'words (leave "kind" out to keep the built-in one). Optional: "shots" as [{"name": "...", "text": "..."}] '
         'for your own shot list (the first is the hero), and "subject" for the word that finds the subject in the '
-        'photo. Put names in "hidden" to leave them out of the panel.')
+        'photo. Put names in "hidden" to leave them out of the menu.')
 
 NOUN = {"product": "product", "people": "person"}
 KEEP = {

@@ -104,6 +104,8 @@ def run_photoshoot(shoot_name: str, photo_path: str | Path, settings: Settings, 
     n = len(planned)
     size = create_size(settings.create_choice, settings.megapixels)
     try:
+        with pc:  # PhotoCraft must be there before minutes of work go into the shots
+            pc.compatibility()
         status("Sending to ComfyUI…")
         comfy.check()
         status("Cutting out the subject…")
@@ -147,7 +149,13 @@ def run_photoshoot(shoot_name: str, photo_path: str | Path, settings: Settings, 
                                    time.time())
         run_id = shoot_store.save_run(Path(settings.shoots_dir), run, subject, images[1], settings.keep_results)
         status("Opening the shots in PhotoCraft…")
-        _place_all(pc, settings, run_id, images, [name for name, _ in planned])
+        try:
+            _place_all(pc, settings, run_id, images, [name for name, _ in planned])
+        except PhotoCraftError as e:  # keep the finished shots as files rather than losing them
+            folder = Path(settings.shoots_dir) / run_id
+            for k, img in images.items():
+                img.save(folder / f"shot_{k}.png")
+            raise UserFacingError(f"{e} The {len(images)} shots are saved in {folder}.") from e
         progress(1.0)
     except (PhotoCraftError, ComfyError) as e:
         raise UserFacingError(str(e)) from e
