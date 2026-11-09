@@ -6,11 +6,14 @@ import ctypes
 import math
 import sys
 import tkinter as tk
+import xml.etree.ElementTree as ET
 from functools import lru_cache
+from pathlib import Path
 from typing import Callable
 
 from PIL import Image, ImageDraw, ImageTk
 
+from . import svgicon
 from .dpi import px
 from .theme import Palette
 
@@ -80,9 +83,25 @@ ICONS: dict[str, list[tuple]] = {
 }
 
 
+ICON_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1])) / "assets" / "icons"
+LUCIDE = {  # our icon name -> its Lucide file in assets/icons (drawn ones below are the fallback)
+    "spark": "sparkles", "eraser": "eraser", "image": "image", "presets": "sliders-horizontal",
+    "expand": "scaling", "upscale": "maximize-2", "more": "ellipsis", "chev": "chevron-down", "x": "x",
+    "stack": "copy", "history": "history", "gear": "settings", "plug": "plug", "check": "check",
+    "target": "lasso-select", "create": "image-plus", "palette": "palette", "folder": "folder-open",
+    "coffee": "coffee", "wand": "wand-sparkles", "swap": "arrow-left-right", "camera": "camera",
+}
+
+
 @lru_cache(maxsize=512)
 def icon_image(name: str, size: int, color: str) -> Image.Image:
-    """An RGBA icon `size` px square in `color`."""
+    """An RGBA icon `size` px square in `color` (shared: don't draw on it)."""
+    svg = ICON_DIR / f"{LUCIDE.get(name, name)}.svg"
+    if svg.exists():
+        try:
+            return svgicon.render(svg, size, _rgba(color), stroke=1.75)
+        except (ValueError, OSError, ET.ParseError):
+            pass  # a file it can't read: the drawn icon instead
     S = size * SS
     k = S / 24.0
     w = max(1, round(1.7 * k))

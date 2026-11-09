@@ -8,4 +8,5 @@ dist/
 *.spec
 assets/*
 !assets/styles/
+!assets/icons/
 docs/samples/
