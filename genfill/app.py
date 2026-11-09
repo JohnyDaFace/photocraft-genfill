@@ -37,6 +37,7 @@ from .widgets import (BarButton, PopupMenu, Tooltip, minimize, round_corners, sc
 
 TITLE = "Generative Fill for PhotoCraft"
 KOFI_URL = "https://ko-fi.com/T7L52ABIMT"
+KOFI_BLUE = "#29abe0"  # Ko-fi's own button colour
 BORDERLESS = sys.platform == "win32"  # elsewhere a borderless window can't reliably take keyboard focus
 OK, BAD, UNKNOWN = "#2d9d78", "#e68619", None  # connection dot colours (Spectrum green / orange)
 PLACEHOLDER = {"selection": "Describe what to fill in, or leave empty…",
@@ -691,12 +692,12 @@ class App:
             version, url = self.update_info
             items.append(("item", f"Version {version} is out: download", lambda: webbrowser.open(url), "spark"))
         items.append(("info", f"Version {__version__}"))
-        items.append(("item", "Buy me a coffee (Ko-fi)", lambda: webbrowser.open(KOFI_URL), "coffee"))
         items.append(("sep",))
         if BORDERLESS:
             items.append(("item", "Minimize", lambda: minimize(self.root), "chev"))
         items.append(("item", "Restart GenFill", self.restart, "history"))
         items.append(("item", "Quit", self.quit, "x"))
+        items.append(("button", "Support me on Ko-fi", lambda: webbrowser.open(KOFI_URL), "coffee", KOFI_BLUE))
         self._menu(self.more_btn, items, right=True)
 
     def _use_prompt(self, text: str) -> None:

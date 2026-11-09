@@ -52,3 +52,18 @@ def test_menu_runs_the_choice_and_closes(root):
     m._choose(lambda: chosen.append("sky"))
     assert chosen == ["sky"]
     assert not m.winfo_exists()
+
+
+def test_menu_button_is_a_wide_pill_that_runs_its_command(root):
+    chosen = []
+    anchor = tk.Frame(root)
+    m = PopupMenu(anchor, [("item", "Settings…", None), ("button", "Support me on Ko-fi",
+                                                         lambda: chosen.append("kofi"), "coffee", "#29abe0")],
+                  theme.PALETTES["Pro"], theme.fonts(root)["body"])
+    root.update()
+    button = [w for w in m.winfo_children()[0].winfo_children() if isinstance(w, tk.Canvas)][0]
+    assert button.find_all()  # the pill, the cup and the words are drawn
+    button.event_generate("<ButtonRelease-1>")
+    root.update()
+    assert chosen == ["kofi"]
+    assert not m.winfo_exists()

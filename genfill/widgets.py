@@ -466,6 +466,9 @@ class PopupMenu(tk.Toplevel):
         if kind == "info":
             self._row(body, it[1], color=it[2] if len(it) > 2 else p.text_dim, active=False)
             return
+        if kind == "button":  # ("button", text, command, icon, colour): a filled pill as wide as the menu
+            self._button(body, *it[1:])
+            return
         if kind == "sub":
             row, kids = self._row(body, it[1], right="›")
             for w in [row] + kids:
@@ -486,6 +489,40 @@ class PopupMenu(tk.Toplevel):
             w.bind("<Enter>", lambda e, r=row, k=kids: (self._hover(r, k, True), self._close_child()))
             w.bind("<Leave>", lambda e, r=row, k=kids: self._hover(r, k, False))
             w.bind("<ButtonRelease-1>", lambda e, c=cb: self._choose(c))
+
+    def _button(self, body, text, cb, icon, color):
+        h = px(34)
+        c = tk.Canvas(body, height=h, width=px(200), bg=self.p.chrome, highlightthickness=0, bd=0, cursor="hand2")
+        c.pack(fill="x", padx=px(6), pady=(px(6), px(4)))
+        r, g, b, _a = _rgba(color)
+        hover_color = "#%02x%02x%02x" % tuple(round(v + (255 - v) * 0.15) for v in (r, g, b))
+        bold = self.font.copy()
+        bold.configure(weight="bold")
+        c.font = bold
+        c.state = {"on": False}
+
+        def draw(_e=None):
+            w = max(c.winfo_width(), px(120))
+            c.delete("all")
+            pill = ImageTk.PhotoImage(shape_image(w, h, h / 2, hover_color if c.state["on"] else color, None))
+            ic = ImageTk.PhotoImage(icon_image(icon, px(18), "#ffffff"))
+            c.imgs = (pill, ic)
+            c.create_image(0, 0, image=pill, anchor="nw")
+            tid = c.create_text(0, h // 2, text=text, fill="#ffffff", font=c.font, anchor="w")
+            x0, _y0, x1, _y1 = c.bbox(tid)
+            gap, iw = px(8), px(18)
+            left = (w - (iw + gap + x1 - x0)) // 2
+            c.create_image(left, h // 2, image=ic, anchor="w")
+            c.coords(tid, left + iw + gap, h // 2)
+
+        def hover(on):
+            c.state["on"] = on
+            draw()
+
+        c.bind("<Configure>", draw)
+        c.bind("<Enter>", lambda e: hover(True))
+        c.bind("<Leave>", lambda e: hover(False))
+        c.bind("<ButtonRelease-1>", lambda e: self._choose(cb))
 
     def _open_sub(self, row, items):
         if self.child is not None and self.child.items_id == id(items):
