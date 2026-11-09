@@ -1,21 +1,21 @@
 # Generative Fill for PhotoCraft
 
 A small always-on-top bar that adds AI tools to [PhotoCraft](https://github.com/storytold/photocraft),
-running entirely on your own computer through [ComfyUI](https://github.com/comfyanonymous/ComfyUI) and
-FLUX.2 [klein]:
+running entirely on your own computer through [ComfyUI](https://github.com/comfyanonymous/ComfyUI) and an
+image model of your choice (FLUX.2 [klein] by default):
 
 ![The bar: something selected, nothing selected, no document open, and while it works](docs/showcase/bar.png)
 
-- **Generate** fills a selected area, like Photoshop's Generative Fill / Generative Expand. Enlarge the canvas
-  (say 1080×1350 → 1080×1920), select the empty part, click Generate. The result arrives as a **new masked
-  layer**; your original layers are never changed. You get several versions to choose from.
-- **Expand** makes the canvas bigger (16:9, 4:5, 1:1… or a margin all round) and fills the new edges to
-  match, like Photoshop's Generative Expand.
-- **One-click edits** (like Photoshop's Neural Filters), each in the menu it belongs to: Restore old photo,
-  Colorize, Harmonize, Relight, Sky replacement and portrait tweaks under **Fix ▾**, and Remove reflections
-  (windows, glasses) under **Remove ▾**.
-- **More like this** (Generate Similar): new versions close to a result you almost like.
-The bar's menus are grouped by what they do:
+- **Generate** fills a selected area, like Photoshop's Generative Fill. Enlarge the canvas (say 1080×1350 →
+  1080×1920), select the empty part, click Generate. The result arrives as a **new masked layer**; your original
+  layers are never changed. You get several versions to choose from.
+- **Edit** (Generate with nothing selected) changes the whole image as you describe it: "make it night",
+  "change the jacket to red", "turn it into a watercolour". Everything you don't mention stays the same.
+  **Edit by naming:** when the prompt names a thing ("make the car red", "change the door to blue", "give the
+  woman a hat"), SAM 3 finds it, selects it in PhotoCraft and only that is redrawn. "The car" is the main one,
+  "the cars" all of them. If it isn't found, the whole image is edited. A style left on is not used for these.
+
+The other tools sit in the bar's menus, grouped by what they do:
 
 - **Select ▾** only selects; nothing in the picture changes. With SAM 3 it finds things by name: type "dog" or
   "boat" and it selects them, or pick Sky or People. **By distance** selects what's near (the foreground) or what's
@@ -23,34 +23,39 @@ The bar's menus are grouped by what they do:
 - **Remove ▾** takes things out: what's selected, or (with nothing selected) what you typed, all people or all
   cars in one go, filling in what was behind them; **Remove background** (a layer mask, nothing deleted); and
   reflections on windows or glasses.
-- **Fix ▾** makes the picture better or changes its look: **Enhance**, **Restore old photo**, **Colorize**,
-  **Harmonize**, **Faces** (sharpen, retouch, smile, younger/older, replace), and **Relight**, **Sky** and
-  **Blur & haze** (lens blur, haze, fog).
-- **Fix faces** (Fix ▾ › Faces) finds every face and restores it up close, sharper but the same person.
-  **Replace face** gives one face the face of the person in another photo, keeping the expression and pose.
-- **Reference picture**: give Generate a second image to take an object or a style from.
-- **Edit** (Generate with nothing selected) changes the whole image as you describe it: "make it night",
-  "change the jacket to red", "turn it into a watercolour". Everything you don't mention stays the same.
-  **Edit by naming:** when the prompt names a thing ("make the car red", "change the door to blue", "give the
-  woman a hat"), SAM 3 finds it, selects it in PhotoCraft and only that is redrawn. "The car" is the main one,
-  "the cars" all of them. If it isn't found, the whole image is edited. A style left on is not used for these.
-- **Create ▾** makes a new picture from just the prompt (text to image, 1:1, 4:5, 16:9…) and opens it as a new
-  document. With no document open, the bar offers only this: pick the shape, type, click **Create**.
-- **Sketch to image** (Create ▾ › From my sketch): draw roughly on a new empty layer (a few coloured shapes and
-  lines are enough), keep that layer active, type what it is ("a potted olive tree"), and choose it. The area
-  around your strokes is redrawn as the real thing, with your sketch's shape, place and colours and the photo's
-  light. The result is a new layer above the sketch layer, which is left as it was. Your LoRAs are not used
-  for sketches (with one on, an outline sketch tends to be erased instead of drawn). Make 2 to 4 results to pick from.
-- **Photoshoot** (Create ▾ › Photoshoot) turns one photo of a product or a person into a whole shoot: 8 shots on
-  the same set, in the same light, from different angles and poses, opened as layers in a new document.
-  **Reshoot** redoes any one shot.
-- **Enhance** (in Fix ▾) gives back the same picture at the same size, crisper and better lit, like a
-  professional camera shot, as a layer you can fade or mask.
-- **Upscale** (Resize ▾, 2× or 4×) redraws the whole image larger with new detail and opens it as a new document.
-- **Styles** (the **Style** button; it shows the look while one is on, with ✕ to turn it off): 85 looks in tabs (Photo, Portrait, Product, Art, Design, Eras) that stay on for Create
-  and whole-image edits. With nothing typed, Generate turns a photo into that style. Add an angle from the **+ Angles** tab on top (the panel stays open and shows "Look: … + Angle: …"):
-  low angle, bird's-eye, from behind, wide shot…
-- **Results are kept**: close the choice window and reopen it later, even days later, from *Other results*.
+- **Fix ▾** makes the picture better or changes its look, in one click (like Photoshop's Neural Filters):
+  - **Enhance**: the same picture at the same size, crisper and better lit, as a layer you can fade or mask.
+  - **Restore old photo**, **Colorize** black & white, **Harmonize** a pasted object into the scene.
+  - **Faces**: every face restored up close, sharper but the same person; retouch, smile, younger or older; or
+    **replace** a face with the person in another photo, keeping the expression and pose.
+  - **Relight**, **Sky** replacement and **Blur & haze** (lens blur, haze in the distance, fog).
+- **Resize ▾**: **Expand** makes the canvas bigger (16:9, 4:5, 1:1… or a margin all round) and fills the new
+  edges to match, like Photoshop's Generative Expand. **Upscale** (2× or 4×) redraws the whole image larger with
+  new detail and opens it as a new document.
+- **Create ▾** makes something new:
+  - **A new picture** from just the prompt (1:1, 4:5, 16:9…), opened as a new document. With no document open,
+    the bar offers only this: pick the shape, type, click **Create**.
+  - **From my sketch**: draw roughly on a new empty layer (a few coloured shapes and lines are enough), keep that
+    layer active, type what it is ("a potted olive tree"), and choose it. The area around your strokes is redrawn
+    as the real thing, with your sketch's shape, place and colours and the photo's light, as a new layer above
+    the sketch. Your LoRAs are not used for sketches (with one on, an outline sketch tends to be erased instead
+    of drawn). Make 2 to 4 results to pick from.
+  - **Photoshoot** turns one photo of a product or a person into a whole shoot: 8 shots on the same set, in the
+    same light, from different angles and poses, opened as layers in a new document. **Reshoot** redoes any one
+    shot.
+
+And next to the prompt:
+
+- **Style**: 85 looks in tabs (Photo, Portrait, Product, Art, Design, Eras) that stay on for Create and
+  whole-image edits; the button shows the look while one is on, with ✕ to turn it off. With nothing typed,
+  Generate turns a photo into that style. Add an angle from the **+ Angles** tab on top (low angle, bird's-eye,
+  from behind, wide shot…); the panel shows "Look: … + Angle: …".
+- **Reference**: give Generate a second image to take an object or a style from.
+- **Results are kept**: in the *Choose a result* window, **More like this** makes new versions close to one you
+  almost like. Close the window and reopen it later, even days later, from **Other results**.
+
+Under the hood you choose the image model in Settings (FLUX.2 Klein 9B, FLUX 3 Klein, Qwen Image 2.1, or
+Krea 2 for Create), or plug in [**your own ComfyUI workflow**](#your-own-comfyui-workflow) for Generate and Create.
 
 Nothing is uploaded anywhere: the bar talks only to PhotoCraft and ComfyUI on your own machine. The one
 exception is a small check at startup that asks GitHub for the latest version number (turn it off in Settings).
