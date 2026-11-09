@@ -39,20 +39,22 @@ class Shoot:
 PRODUCT_SHOTS: tuple[Shot, ...] = (
     Shot("hero", "hero shot: the product standing upright facing the camera, eye level, medium shot, "
                  "label fully readable"),
-    Shot("label close-up", "close-up of the front label, the label fills much of the frame, perfectly sharp "
-                           "and readable"),
+    Shot("label close-up", "close shot at eye level, the product fills most of the frame, the whole front label "
+                           "in view, sharp and readable"),
     Shot("gentle low angle", "low angle hero shot, the camera just below the product looking slightly up at it, "
                              "label facing the camera"),
-    Shot("three-quarter turn", "three-quarter view, the product turned about 30 degrees, the label still "
-                               "visible and facing mostly towards the camera"),
-    Shot("wide set", "wide shot showing the whole set around the product, the product smaller in the frame, "
-                     "label facing the camera"),
-    Shot("detail macro", "macro detail of the cap and the top of the product, shallow depth of field, "
-                         "label facing the camera, label edge in focus"),
-    Shot("in hand", "the product held in an elegant hand at chest height, label facing the camera, the face "
-                    "out of frame"),
-    Shot("lifestyle props", "the product at eye level surrounded by a few props that suit it, placed beside "
-                            "and in front of it so none cover the label, label facing the camera"),
+    Shot("three-quarter turn", "seen from the right side of the set at eye level, the camera 45 degrees round "
+                               "from the front, a different part of the set behind it, the product turned towards "
+                               "the camera so the label still reads"),
+    Shot("wide set", "the camera pulled far back for a wide shot of the whole set, the product small in the "
+                     "lower third of the frame, most of the picture is the set around it, label facing the camera"),
+    Shot("detail macro", "tight detail shot of the upper half of the product at eye level, the cap and the top "
+                         "of the label filling the frame, shallow depth of field, label facing the camera"),
+    Shot("in hand", "the product held up in one hand, only the hand and a sweater sleeve in the frame, no "
+                    "body or face, no other products, the set behind, label facing the camera"),
+    Shot("lifestyle props", "the product set further back on the surface, framed between props that suit it "
+                            "in the soft out-of-focus foreground, shallow depth of field, none covering the "
+                            "label, label facing the camera"),
     Shot("side light", "eye-level shot with the light coming strongly from one side, a long soft shadow "
                        "falling across the surface, label facing the camera"),
     Shot("off-centre", "eye-level shot with the product on the right third of the frame and calm empty space "
@@ -104,13 +106,15 @@ _BUILT_IN = (
      "A sunny summer garden table, dappled light through green leaves, weathered wood and a few wild flowers, "
      "bright warm daylight, a softly blurred lawn behind."),
     ("people", "Studio headshots",
-     "A professional photo studio: a plain light grey backdrop, a large soft key light in front and a gentle fill, "
-     "a stool and a small side table, clean true-to-life colour."),
+     "A professional portrait studio: a plain seamless light grey paper backdrop filling the whole background, "
+     "a tall window with sheer curtains at one side, a stool and a small wooden side table, soft even flattering "
+     "light on the face, clean true-to-life colour."),
     ("people", "Loft editorial",
      "A bright industrial loft: tall steel-framed windows, a brick wall, a concrete floor, a worn leather sofa and "
      "a wooden table, soft daylight with warm highlights, a refined editorial colour grade."),
     ("people", "Street / city casual",
-     "A city street on a bright day: a brick building with a doorway, a railing and a bench along the pavement, "
+     "A city street on a bright day, outdoors on the pavement: a brick building with a doorway, a café's big "
+     "shop window, a railing and a bench, "
      "soft daylight with gentle shadows, a relaxed natural colour grade."),
 )
 
@@ -211,4 +215,5 @@ def hero_prompt(kind: str, set_text: str, shot_text: str) -> str:
 
 def follow_prompt(kind: str, shot_text: str) -> str:
     return ("Another photo from the same professional photoshoot as image 2: the same set, lighting and colour "
-            f"grade, of the {NOUN[kind]} from image 1. This shot: {_bare(shot_text)}. {KEEP[kind]}")
+            f"grade, of the {NOUN[kind]} from image 1. Take it from a clearly different camera position and framing "
+            f"than image 2. This shot: {_bare(shot_text)}. {KEEP[kind]}")

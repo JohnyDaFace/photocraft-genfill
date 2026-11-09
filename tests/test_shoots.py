@@ -57,4 +57,5 @@ def test_prompts_are_the_spec_wording():
         "and logo, letter for letter.")
     assert shoots.follow_prompt("people", "laughing").startswith(
         "Another photo from the same professional photoshoot as image 2: the same set, lighting and colour grade, "
-        "of the person from image 1. This shot: laughing. Keep the exact same person as in image 1:")
+        "of the person from image 1. Take it from a clearly different camera position and framing than image 2. "
+        "This shot: laughing. Keep the exact same person as in image 1:")

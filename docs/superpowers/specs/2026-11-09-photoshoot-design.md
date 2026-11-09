@@ -119,8 +119,9 @@ Builder's call recorded here: no detection, the chosen shoot sets the kind.)
 - **Hero** (shot 1): refs `[subject]`. Prompt: "A professional photoshoot photo of the {product|person} from
   image 1. The shoot: {shoot.set}. This shot: {shot.text}. {keep}".
 - **Follow shots** (2..n): refs `[subject, hero]`. Prompt: "Another photo from the same professional photoshoot
-  as image 2: the same set, lighting and colour grade, of the {product|person} from image 1. This shot:
-  {shot.text}. {keep}".
+  as image 2: the same set, lighting and colour grade, of the {product|person} from image 1. Take it from a
+  clearly different camera position and framing than image 2. This shot: {shot.text}. {keep}". (The camera
+  sentence was added after real runs: without it, follow shots copied the hero's framing.)
 - `keep` for products: "Keep the product exactly as in image 1: the same shape, colours, materials and the exact
   same label text and logo, letter for letter." For people: "Keep the exact same person as in image 1: the same
   face, facial features, eye colour, skin, hair and beard." (These worked in the spike; `styles.KEEP_PRODUCT`

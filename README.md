@@ -25,6 +25,9 @@ FLUX.2 [klein]:
   "change the jacket to red", "turn it into a watercolour". Everything you don't mention stays the same.
 - **Create ▾** makes a new picture from just the prompt (text to image, 1:1, 4:5, 16:9…) and opens it as a new
   document. With no document open, the bar offers only this: pick the shape, type, click **Create**.
+- **Photoshoot** (the camera icon) turns one photo of a product or a person into a whole shoot: 8 shots on
+  the same set, in the same light, from different angles and poses, opened as layers in a new document.
+  **Reshoot** redoes any one shot.
 - **Enhance** (in Upscale ▾) gives back the same picture at the same size, crisper and better lit, like a
   professional camera shot, as a layer you can fade or mask.
 - **Upscale** (2× or 4×) redraws the whole image larger with new detail and opens it as a new document.
@@ -306,6 +309,30 @@ HD, so 16:9 is 1920×1080). You choose from the results as with Generate, *More 
 as a new document; your open pictures are not touched. Describe it like a photo caption: subject, place, light,
 style ("film photo", "watercolour", "studio product shot"). With a **reference picture** set you can say
 "the chair from image 2 in a sunny loft". For print sizes, use **Upscale** on the result.
+
+**Photoshoot** (the camera icon on the bar): click it and pick a shoot. **Product** has *Clean studio white*,
+*Skincare morning light*, *Luxury dark*, *Kitchen / lifestyle table* and *Outdoor summer*. **People** has *Studio
+headshots*, *Loft editorial* and *Street / city casual*. Then choose a photo of the product or the person (a phone
+photo is fine). GenFill cuts the subject out of the photo, makes a hero shot on the shoot's set, and then makes the
+other shots from that hero, so every shot shares the set, the light and the colour grade. The angle, framing and
+pose change from shot to shot. The shots open as layers in a new document, named "Shot 1 – hero", "Shot 2 – …" and
+so on. Hide layers to see the others, or export each one.
+
+- **How many and what shape:** in the same menu, **Shots** is 4, 8 (the default) or 12, and **Shape** is the
+  same shape setting as Create (square by default).
+- **How long it takes:** 8 shots take about 6 to 9 minutes on a 10 GB card. Cancel keeps the shots already finished.
+  If a shot fails, it is tried once more and then skipped; the message says which shots are missing.
+- **Reshoot:** select one shot's layer and a **Reshoot** button appears on the bar. It makes new versions of just
+  that shot, on the same set and with the same product or person, and you choose one as with Generate. The layer
+  keeps its place and its name. Reshoot works as long as the shoot is among the last 50 you made and the document
+  hasn't been resized.
+- **Your own shoots:** **Edit shoots…** opens `shoots.json`. Add a shoot with a name, `"kind"` (`"product"` or
+  `"people"`) and a `"set"`: a sentence or two about the place, the light and the colour grade. To change a
+  built-in shoot, use its name. Put names in `"hidden"` to leave them out of the menu. You can also give a shoot
+  its own `"shots"` list (the first one is the hero).
+
+Tip: the product's label and the person's face are kept as closely as the model can, but small print on a label
+can still come out wrong in a shot or two. Reshoot those shots a few times and pick the version that reads right.
 
 **Enhance**: with nothing selected, **Upscale ▾ › Enhance: crisper, better light**. It works in two passes:
 first it finds better light and colour (only those are kept, so nothing in the picture changes), then it
