@@ -435,6 +435,13 @@ class SegComfy(FakeComfy):
             m.paste((255, 255, 255), (int(x0 * sx), int(y0 * sy), int(x1 * sx), int(y1 * sy)))
         return m
 
+    def run_all(self, wf, on_progress, cancel):  # one mask per thing found; SAM 3 finding nothing fails
+        if not self.found:
+            self.queries.append(wf["seg_text"]["inputs"]["text"])
+            from genfill.comfy import ComfyError
+            raise ComfyError("index 0 is out of bounds")
+        return [self.run(wf, on_progress, cancel)]
+
 
 class FaceComfy(FakeComfy):
     """SAM 3 finds faces at fractions of whatever picture it is shown; the redraws record their inputs."""
@@ -849,3 +856,50 @@ def test_small_holes_are_closed_big_gaps_stay_open():
     assert out[105, 105] == 255
     assert out[220, 220] == 0
     assert out[10, 10] == 0
+
+
+# -- edit by naming ----------------------------------------------------------------------------------------
+def test_named_target_reads_the_thing_an_edit_names():
+    from genfill.pipeline import named_target
+    assert named_target("Make the car red.") == ["car red", "car"]
+    assert named_target("change the sofa to green leather") == ["sofa"]
+    assert named_target("give the man a hat") == ["man"]
+    assert named_target("turn her dress into a ball gown") == ["dress"]
+    assert named_target("make it night") == []
+    assert named_target("make the whole picture warmer") == []
+    assert named_target("a cat on the sofa") == []
+
+
+def test_naming_a_thing_with_nothing_selected_edits_only_that_thing(tmp_path):
+    pc, comfy = SegPC(_doc(), exchange=tmp_path), SegComfy(found=(100, 400, 300, 700))
+    r = generate("make the car red", _settings(tmp_path), lambda s: None, lambda f: None, threading.Event(),
+                 pc=pc, comfy=comfy, count=1)
+    assert pc.selected                      # the car is selected in PhotoCraft
+    assert r.masked and r.layer == "Edit – make the car red"
+    fm = np.asarray(r.job.mask)
+    assert fm[550, 200] == 255 and fm[1500, 900] == 0
+    assert comfy.queries[0].startswith("car red")
+
+
+def test_naming_a_thing_that_isnt_there_edits_the_whole_picture(tmp_path):
+    pc, comfy = SegPC(_doc(), exchange=tmp_path), SegComfy(found=None)
+    r = generate("make the car red", _settings(tmp_path), lambda s: None, lambda f: None, threading.Event(),
+                 pc=pc, comfy=comfy, count=1)
+    assert not pc.selected and r.job.mask is None and not r.masked
+    assert len(comfy.queries) == 2          # tried 'car red', then 'car'
+
+
+def test_naming_without_sam_edits_the_whole_picture(tmp_path):
+    pc, comfy = SegPC(_doc(), exchange=tmp_path), SegComfy(missing_model=True)
+    r = generate("make the car red", _settings(tmp_path), lambda s: None, lambda f: None, threading.Event(),
+                 pc=pc, comfy=comfy, count=1)
+    assert r.job.mask is None and not pc.selected
+
+
+def test_naming_a_thing_wins_over_a_style_left_on(tmp_path):
+    from dataclasses import replace
+    pc, comfy = SegPC(_doc(), exchange=tmp_path), SegComfy(found=(100, 400, 300, 700))
+    s = replace(_settings(tmp_path), style="Cinematic", angle="Low angle")
+    r = generate("make the car red", s, lambda s: None, lambda f: None, threading.Event(), pc=pc, comfy=comfy,
+                 count=1)
+    assert r.masked and r.job.prompt == "make the car red"

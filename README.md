@@ -23,6 +23,9 @@ FLUX.2 [klein]:
 - **Reference picture**: give Generate a second image to take an object or a style from.
 - **Edit** (Generate with nothing selected) changes the whole image as you describe it: "make it night",
   "change the jacket to red", "turn it into a watercolour". Everything you don't mention stays the same.
+  **Edit by naming:** when the prompt names a thing ("make the car red", "change the door to blue", "give the
+  woman a hat"), SAM 3 finds it, selects it in PhotoCraft and only that is redrawn. "The car" is the main one,
+  "the cars" all of them. If it isn't found, the whole image is edited. A style left on is not used for these.
 - **Create ▾** makes a new picture from just the prompt (text to image, 1:1, 4:5, 16:9…) and opens it as a new
   document. With no document open, the bar offers only this: pick the shape, type, click **Create**.
 - **Photoshoot** (the camera icon) turns one photo of a product or a person into a whole shoot: 8 shots on

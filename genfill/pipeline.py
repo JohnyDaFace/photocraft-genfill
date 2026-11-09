@@ -234,6 +234,16 @@ def generate(prompt: str, settings: Settings, status: Status, progress: Progress
         edit = doc.selection is None
         styled = edit and not remove and name is None and bool(styles.text_for(settings.style)
                                                                 or styles.angle_text(settings.angle))  # whole edits only
+        named = None
+        if edit and not remove and name is None and shape is None:
+            found = _find_named(image, label, settings, status, cancel, comfy)
+            if found is not None:  # edit only the thing the prompt names: select it, then fill it
+                named, mask_shape = found
+                status(f"Found {named}: selecting it in PhotoCraft…")
+                _select(pc, settings, mask_shape)
+                doc, image = _read(pc)
+                edit, shape = doc.selection is None, mask_shape
+                styled = False  # a style or angle is a look for the whole picture, not for one thing in it
         if edit and not label and not styled:
             raise UserFacingError("Make a selection first to fill it, or type what to change (for example "
                                   "'make it night') to edit the whole image.")
@@ -252,7 +262,7 @@ def generate(prompt: str, settings: Settings, status: Status, progress: Progress
         if edit and name in presets.KEEP_COLOURS:
             images = [imaging.keep_colors(image, im) for im in images]
         shown = name or label or (" · ".join(x for x in (settings.style, settings.angle) if x) if styled else "")
-        name = ("Edit" if edit else "Remove" if remove else "Generative Fill") + (f" – {shown[:40]}" if shown else "")
+        name = ("Edit" if edit or named else "Remove" if remove else "Generative Fill")             + (f" – {shown[:40]}" if shown else "")
         return Results(images, [_preview(im, doc.selection) for im in images], name, not edit,
                        (image.width, image.height), doc.selection, job)
     except (PhotoCraftError, ComfyError) as e:
@@ -342,6 +352,71 @@ def _segment_each(rgb: Image.Image, what: str, settings: Settings, cancel, comfy
         raise
     masks = [imaging.fill_small_holes(o.getchannel("R").resize(rgb.size, Image.BILINEAR)) for o in outs]
     return [m for m in masks if m.getbbox()]
+
+
+# -- edit by naming: "make the car red" with nothing selected edits only the car ---------------------------
+NAMING = re.compile(r"^(?:please\s+)?(?:make|turn|change|paint|colou?r|recolou?r|replace|swap|give|dress)\s+"
+                    r"(?:the|his|her|their|my|its|that|this|those|these)\s+(.+)$")
+NAME_ENDS = {"to", "into", "with", "look", "looks", "more", "less", "a", "an", "so", "as", "and", "but", "in",
+             "on", "at", "from", "be", "much", "very", "slightly", "bit", "same", "like", "for", "of", "all"}
+NOT_A_THING = {"whole", "entire", "picture", "photo", "image", "scene", "everything", "lighting", "light", "mood",
+               "weather", "colours", "colors", "style", "time", "season", "atmosphere", "background", "photograph",
+               "shot", "composition", "contrast", "tone", "tones", "exposure"}
+NAMED_MAX_COVER = 0.85  # a "thing" covering more of the picture than this is the picture: edit it all
+
+
+def named_target(prompt: str) -> list[str]:
+    """What an edit prompt names, as SAM 3 queries to try, longest first: 'make the red car bright blue'
+    -> ['red car bright blue', 'red car bright', 'red car', 'red', ...] cut at words that end a name
+    ('change the sofa to leather' -> ['sofa']). [] when it names no thing ('make it night')."""
+    m = NAMING.match(re.sub(r"[.!?]+$", "", prompt.strip().lower()))
+    if not m:
+        return []
+    words = []
+    for w in m.group(1).replace(",", " ").split():
+        if w in NAME_ENDS:
+            break
+        words.append(w)
+    words = words[:4]
+    if not words or words[0] in NOT_A_THING:
+        return []
+    return [" ".join(words[:n]) for n in range(len(words), 0, -1)]
+
+
+def _find_named(image: Image.Image, prompt: str, settings: Settings, status: Status, cancel, comfy):
+    """(what, mask) of the thing an edit prompt names, found by SAM 3, or None (nothing named, not found,
+    too big, or SAM 3 not installed): then the whole picture is edited as before. 'the car' is the most
+    likely subject among the cars; 'the cars' is all of them."""
+    tries = named_target(prompt)
+    if not tries:
+        return None
+    rgb = _flat(image)
+    for what in tries:
+        if what.split()[-1] in NOT_A_THING:
+            continue
+        status(f"Looking for the {what} with SAM 3… (the first time loads the model)")
+        try:
+            masks = _segment_each(rgb, what, settings, cancel, comfy)
+        except (UserFacingError, ComfyError):
+            if cancel.is_set():
+                raise
+            return None  # no SAM 3: edit the whole picture as before
+        if not masks:
+            continue
+        last = what.split()[-1]
+        if last.endswith("s") and not last.endswith("ss"):  # plural: every one of them
+            mask = masks[0]
+            for m in masks[1:]:
+                mask = ImageChops.lighter(mask, m)
+        else:
+            from .photoshoot import _main_score
+            mask = max(masks, key=_main_score)
+        cover = sum(mask.convert("L").histogram()[128:]) / (mask.width * mask.height)
+        if cover > NAMED_MAX_COVER:
+            return None
+        return f"the {what}", mask
+    status("Didn't find what the prompt names: editing the whole picture…")
+    return None
 
 
 def _reference_face(reference: Image.Image, settings: Settings, progress: Progress, cancel, comfy) -> Image.Image:
