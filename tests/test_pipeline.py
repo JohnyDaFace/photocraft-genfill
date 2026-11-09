@@ -868,6 +868,39 @@ def test_remove_background_masks_the_active_layer(tmp_path):
     assert pc.masked_layer and msg == "Background removed, kept the cup"
 
 
+class CutoutComfy(SegComfy):
+    """BiRefNet: the main subject is the middle of the picture."""
+    cutout_missing = False
+
+    def check_cutout(self, model=None):
+        return ["ComfyUI doesn't have the background removal model 'birefnet.safetensors'."] \
+            if self.cutout_missing else []
+
+    def run(self, wf, on_progress, cancel):
+        if "cut" not in wf:
+            return super().run(wf, on_progress, cancel)
+        self.runs += 1
+        w, h = self.uploads[-1]
+        m = Image.new("RGB", (w, h), (0, 0, 0))
+        m.paste((255, 255, 255), (w // 4, h // 4, 3 * w // 4, 3 * h // 4))
+        return m
+
+
+def test_remove_background_with_nothing_typed_keeps_the_main_subject(tmp_path):
+    from genfill.pipeline import remove_background
+    pc, comfy = SegPC(_doc(), exchange=tmp_path), CutoutComfy()
+    msg = remove_background("", _settings(tmp_path), lambda s: None, lambda f: None, threading.Event(),
+                            pc=pc, comfy=comfy)
+    assert pc.masked_layer and msg == "Background removed, kept the main subject"
+    assert comfy.queries == []  # BiRefNet, not SAM 3
+    comfy, pc = CutoutComfy(), SegPC(_doc(), exchange=tmp_path)
+    comfy.cutout_missing = True
+    with pytest.raises(UserFacingError, match="background removal model"):
+        remove_background("", _settings(tmp_path), lambda s: None, lambda f: None, threading.Event(),
+                          pc=pc, comfy=comfy)
+    assert not pc.masked_layer
+
+
 def test_small_holes_are_closed_big_gaps_stay_open():
     from genfill.imaging import fill_small_holes
     m = Image.new("L", (400, 400), 0)

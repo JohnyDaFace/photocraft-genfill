@@ -80,7 +80,7 @@ made with the same model, so no real photos are involved.
 
 ![Select by name: the sky over the lake, and the boats in the harbour](docs/showcase/select.jpg)
 
-**Remove background**: type *coffee cup*, Select ▾ › Remove background, keep “coffee cup”.
+**Remove background**: Select ▾ › Remove background keeps the main subject; or type *coffee cup* first to keep just that.
 
 ![Remove background: a coffee cup cut out, the rest hidden by a layer mask](docs/showcase/remove-background.jpg)
 
@@ -398,7 +398,10 @@ choose from. How far the light and colour may change is `enhance_strength` in th
 - **Select ▾ › “dog”** selects every dog it finds; **Sky** and **People** work without typing.
 - **Fix ▾ › Remove › “dog”**, **People** or **Cars** finds them, selects them and fills them away like Remove (you choose
   from the results as usual). Only the found shapes are redrawn, not a box around them.
-- **Select ▾ › Remove background, keep “dog”** puts a layer mask on the active layer that hides everything else. Nothing is
+- **Select ▾ › Remove background** puts a layer mask on the active layer that hides everything but the main subject
+  (found by BiRefNet: `birefnet.safetensors` in `ComfyUI/models/background_removal/`, from
+  [Comfy-Org/BiRefNet](https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors),
+  424 MB). Type something first (*dog*) and it becomes **Remove background, keep “dog”**, found by SAM 3. Nothing is
   deleted: paint on the mask to fix edges, or delete the mask to undo it. A Background layer becomes "Layer 0".
 
 **Depth** (Depth Anything V2 in ComfyUI works out how far away each part of the picture is; the effects are

@@ -570,8 +570,8 @@ class App:
                  ("item", "Sky", lambda: self.start("select", what=FIND["sky"][0], label=FIND["sky"][1])),
                  ("item", "People", lambda: self.start("select", what=FIND["people"][0], label=FIND["people"][1])),
                  ("sep",), ("header", "Cut out"),
-                 ("item", f"Remove background, keep “{short}”" if typed else "Remove background…",
-                  (lambda: self.start("cutout", what=typed)) if typed else hint),
+                 ("item", f"Remove background, keep “{short}”" if typed else "Remove background",
+                  lambda: self.start("cutout", what=typed)),  # nothing typed: the main subject
                  ("sep",), ("header", "By distance"),
                  ("item", "Foreground (what's near)", lambda: self.start("depth_select", choice="foreground")),
                  ("item", "Background (what's far)", lambda: self.start("depth_select", choice="background"))]

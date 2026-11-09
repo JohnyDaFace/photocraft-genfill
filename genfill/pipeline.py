@@ -15,8 +15,8 @@ from . import depth, imaging, presets, results_store, styles
 from .dpi import px
 from .families import family
 from .comfy import (ComfyClient, ComfyError, build_create_workflow, build_edit_workflow, build_fill_workflow,
-                    build_depth_workflow, build_refine_workflow, build_seedvr_workflow, build_segment_workflow,
-                    UPSCALE_MODEL)
+                    build_cutout_workflow, build_depth_workflow, build_refine_workflow, build_seedvr_workflow,
+                    build_segment_workflow, UPSCALE_MODEL)
 from .photocraft_client import PhotoCraftClient, PhotoCraftError
 from .settings import Settings
 
@@ -599,9 +599,13 @@ def remove_things(what: str, settings: Settings, status: Status, progress: Progr
 
 def remove_background(what: str, settings: Settings, status: Status, progress: Progress, cancel, pc=None,
                       comfy=None) -> str:
-    """Keep only `what`: a layer mask on the active layer hides the rest (nothing is deleted)."""
+    """Keep only `what` (nothing typed: the main subject, found by BiRefNet): a layer mask on the active
+    layer hides the rest (nothing is deleted)."""
     pc, comfy = _clients(settings, pc, comfy)
-    _, _, mask = find(what, settings, status, progress, cancel, pc, comfy)
+    if what.strip():
+        _, _, mask = find(what, settings, status, progress, cancel, pc, comfy)
+    else:
+        mask = _main_subject(settings, status, progress, cancel, pc, comfy)
     status("Masking the layer in PhotoCraft…")
     _select(pc, settings, mask)
     try:
@@ -610,7 +614,29 @@ def remove_background(what: str, settings: Settings, status: Status, progress: P
             pc.mask_active_layer()
     except PhotoCraftError as e:
         raise UserFacingError(str(e)) from e
-    return f"Background removed, kept {what.strip()}"
+    return f"Background removed, kept {what.strip() or 'the main subject'}"
+
+
+def _main_subject(settings: Settings, status: Status, progress: Progress, cancel, pc, comfy) -> Image.Image:
+    """BiRefNet's mask (picture-sized L) of the picture's main subject."""
+    try:
+        status("Reading the image from PhotoCraft…")
+        _, image = _read(pc)
+        comfy.check()
+        problems = comfy.check_cutout()
+        if problems:
+            raise UserFacingError(problems[0])
+        status("Finding the main subject… (the first time loads the model)")
+        rgb = _flat(image)
+        ww, wh = imaging.working_size(rgb.width, rgb.height, settings.megapixels)
+        name = comfy.upload(rgb.resize((ww, wh), Image.LANCZOS), "genfill_cutout.png")
+        mask = comfy.run(build_cutout_workflow(name), progress, cancel).getchannel("R").resize(rgb.size, Image.BILINEAR)
+    except (PhotoCraftError, ComfyError) as e:
+        raise UserFacingError(str(e)) from e
+    if not mask.point(lambda v: 255 if v > 127 else 0).getbbox():
+        raise UserFacingError("Couldn't find a main subject. Type what to keep (for example 'the woman') and pick "
+                              "Remove background again.")
+    return mask
 
 
 # -- depth tools: a depth map from Depth Anything V2, the effects worked out from the picture's own pixels ---

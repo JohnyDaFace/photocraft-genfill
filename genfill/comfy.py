@@ -292,6 +292,22 @@ def build_segment_workflow(image_name: str, what: str, model: str = SEGMENT_MODE
     }
 
 
+CUTOUT_MODEL = "birefnet.safetensors"
+CUTOUT_MODEL_URL = "https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors"
+
+
+def build_cutout_workflow(image_name: str, model: str = CUTOUT_MODEL) -> dict:
+    """BiRefNet: a mask of the picture's main subject, nothing named (ComfyUI's own Remove Background
+    template); the mask comes back as a picture."""
+    return {
+        "bg_model": {"class_type": "LoadBackgroundRemovalModel", "inputs": {"bg_removal_name": model}},
+        "image": {"class_type": "LoadImage", "inputs": {"image": image_name}},
+        "cut": {"class_type": "RemoveBackground", "inputs": {"bg_removal_model": ["bg_model", 0], "image": ["image", 0]}},
+        "mask_image": {"class_type": "MaskToImage", "inputs": {"mask": ["cut", 0]}},
+        "out": {"class_type": "PreviewImage", "inputs": {"images": ["mask_image", 0]}},
+    }
+
+
 DEPTH_MODEL = "depth_anything_v2_vitl.pth"
 DEPTH_RESOLUTION = 1024
 
@@ -380,6 +396,16 @@ class ComfyClient:
         if spec and isinstance(spec[0], list):
             return spec[0]
         return (spec[1] or {}).get("options", []) if len(spec) > 1 else []
+
+    def check_cutout(self, model: str = CUTOUT_MODEL) -> list[str]:
+        """Plain-language problems that would stop Remove background with nothing typed (empty = ready)."""
+        if not self._json("/object_info/RemoveBackground").get("RemoveBackground"):
+            return ["Your ComfyUI is too old for automatic background removal. Update ComfyUI and restart it, "
+                    "or type what to keep (for example 'the woman') and pick Remove background again."]
+        if model not in self._choices("LoadBackgroundRemovalModel", "bg_removal_name"):
+            return [f"ComfyUI doesn't have the background removal model '{model}'. Put it in "
+                    f"ComfyUI/models/background_removal/ (download: {CUTOUT_MODEL_URL}), or type what to keep."]
+        return []
 
     def has_depth(self) -> bool:
         try:  # the node downloads its model the first time it runs
