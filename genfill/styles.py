@@ -73,6 +73,41 @@ DEFAULT_STYLES: list[tuple[str, str]] = [
      "Bright real-estate interior photograph, tidy and decluttered, wide-angle lens with perfectly "
      "straight vertical lines, airy soft daylight filling the room, balanced exposure through the windows, "
      "clean inviting look."),
+    ("Kodachrome",
+     "Vintage Kodachrome slide film photograph, deep saturated reds and blues, warm rich contrast, fine grain, "
+     "crisp mid-century colour."),
+    ("Classic Chrome",
+     "Photograph in Fujifilm Classic Chrome colour, muted subdued colours, soft cyan-leaning shadows, gentle "
+     "contrast, quiet documentary feel."),
+    ("CineStill night",
+     "CineStill 800T film photograph, tungsten-balanced cool tones, glowing red halation around bright lights, "
+     "soft grain, moody low-light colour."),
+    ("Bright & airy",
+     "Light and airy photograph, soft bright daylight, creamy pastel tones, lifted shadows, low contrast, fresh "
+     "delicate feel."),
+    ("Dark & moody",
+     "Dark moody photograph, desaturated earthy colours, deep crushed shadows, muted greens and browns, soft "
+     "matte finish, quiet atmospheric feel."),
+    ("HDR",
+     "High dynamic range photograph, detail visible in the deep shadows and the bright highlights alike, vivid "
+     "but natural colours, crisp texture throughout."),
+    ("Long exposure",
+     "Long exposure photograph, anything moving smoothed into silky soft blur, still things perfectly sharp, "
+     "calm serene feel."),
+    ("Tilt-shift",
+     "Tilt-shift photograph, a narrow band of sharp focus with strong blur above and below it, bright light and "
+     "saturated colours, so it looks like a miniature model."),
+    ("Infrared",
+     "Infrared photograph, foliage and grass glowing white, dark dramatic skies, surreal dreamlike false colour."),
+    ("Toy camera",
+     "Lomography toy camera photograph, heavy dark vignette, oversaturated shifted colours, high contrast, soft "
+     "edges, playful lo-fi feel."),
+    ("Dreamy glow",
+     "Soft dreamy photograph, glowing diffused highlights like a mist filter, pastel tones, gentle haze, "
+     "romantic ethereal feel."),
+    ("Documentary",
+     "Candid documentary photograph, natural available light, honest true colours, a 35mm lens, an unposed real "
+     "moment, slight grain."),
     # portraits: close-up head and shoulders, each a classic lighting setup; restyling keeps the face (KEEP_FACE)
     ("Editorial",
      "Close-up editorial portrait, head and shoulders, large soft key light from one side and a gentle rim light, "

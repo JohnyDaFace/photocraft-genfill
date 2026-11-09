@@ -41,7 +41,7 @@ FLUX.2 [klein]:
 - **Enhance** (in Fix ▾) gives back the same picture at the same size, crisper and better lit, like a
   professional camera shot, as a layer you can fade or mask.
 - **Upscale** (Resize ▾, 2× or 4×) redraws the whole image larger with new detail and opens it as a new document.
-- **Styles** (the **Style** button; it shows the look while one is on, with ✕ to turn it off): 73 looks in tabs (Photo, Portrait, Product, Art, Design, Eras) that stay on for Create
+- **Styles** (the **Style** button; it shows the look while one is on, with ✕ to turn it off): 85 looks in tabs (Photo, Portrait, Product, Art, Design, Eras) that stay on for Create
   and whole-image edits. With nothing typed, Generate turns a photo into that style. Add an angle from the **+ Angles** tab on top (the panel stays open and shows "Look: … + Angle: …"):
   low angle, bird's-eye, from behind, wide shot…
 - **Results are kept**: close the choice window and reopen it later, even days later, from *Other results*.
@@ -247,7 +247,9 @@ versions that keep its layout and vary the details; the one you picked stays as 
 **Style**: the **Style** button under the prompt opens thumbnails of each look, in tabs:
 
 - **Photo**: Professional photo, Film photo, Cinematic, Movie poster, Golden hour, Low-key, Black & white
-  film, Film noir, Instant photo, 2000s digital, Fashion editorial, Interior bright (a real-estate look for room photos).
+  film, Film noir, Instant photo, 2000s digital, Fashion editorial, Interior bright (a real-estate look for room photos),
+  Kodachrome, Classic Chrome, CineStill night, Bright & airy, Dark & moody, HDR, Long exposure, Tilt-shift, Infrared,
+  Toy camera, Dreamy glow, Documentary.
 - **Portrait**: close-up head-and-shoulders looks, each a classic lighting setup: Editorial, Corporate headshot,
   Actor headshot, Rembrandt light, Beauty light, Split light, Rim light, Window light, Colour gels, B&W portrait,
   Colour backdrop. Good for turning a phone selfie into a studio portrait.
