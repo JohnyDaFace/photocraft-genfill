@@ -83,8 +83,8 @@ DEFAULT_STYLES: list[tuple[str, str]] = [
      "CineStill 800T film photograph, tungsten-balanced cool tones, glowing red halation around bright lights, "
      "soft grain, moody low-light colour."),
     ("Bright & airy",
-     "Light and airy photograph, soft bright daylight, creamy pastel tones, lifted shadows, low contrast, fresh "
-     "delicate feel."),
+     "Photograph in soft natural daylight with a fresh, gentle colour palette: soft pastel tones, slightly "
+     "lifted shadows, balanced exposure with a full range from dark to light and clear contrast."),
     ("Dark & moody",
      "Dark moody photograph, desaturated earthy colours, deep crushed shadows, muted greens and browns, soft "
      "matte finish, quiet atmospheric feel."),
@@ -103,8 +103,8 @@ DEFAULT_STYLES: list[tuple[str, str]] = [
      "Lomography toy camera photograph, heavy dark vignette, oversaturated shifted colours, high contrast, soft "
      "edges, playful lo-fi feel."),
     ("Dreamy glow",
-     "Soft dreamy photograph, glowing diffused highlights like a mist filter, pastel tones, gentle haze, "
-     "romantic ethereal feel."),
+     "Photograph with a gentle soft-focus glow on the brightest highlights only, rich saturated colour, deep "
+     "shadows and clear contrast, warm romantic mood."),
     ("Documentary",
      "Candid documentary photograph, natural available light, honest true colours, a 35mm lens, an unposed real "
      "moment, slight grain."),
