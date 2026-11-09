@@ -14,8 +14,11 @@ from PIL import Image, ImageDraw, ImageTk
 from . import style_thumbs, styles
 from .widgets import BarButton, round_corners, screen_area
 
-COLUMNS = 5
 GAP = 8
+TILE_MAX = 120     # thumbnails are at most this big…
+TILE_MIN = 72      # …and shrink down to this so the biggest tab fits on the screen
+LABEL_H = 38       # a tile's name under it (two lines) and the highlight border
+CHROME_H = 150     # the panel around the tiles: summary, tabs, footer, padding
 BUILT_IN = {n for n, _ in styles.DEFAULT_STYLES}
 ANGLES_TAB = "Angles"
 
@@ -29,6 +32,18 @@ def groups(every: list[tuple[str, str]]) -> list[tuple[str, list[tuple[str, str]
     tabs = [(t, [s for s in every if kind(s[0]) == t])
             for t in ("Photo", "Portrait", "Product", "Art", "Design", "Eras", "Yours")]
     return [(t, off + g) for t, g in tabs if g] + [(ANGLES_TAB, off + styles.ANGLES)]
+
+
+def grid_size(width: int, room: int, most: int) -> tuple[int, int]:
+    """(thumbnail side, columns) so `most` tiles fit in `width` by `room` pixels: as big as TILE_MAX, smaller
+    (and more to a row) only when the screen has no room for them."""
+    side = TILE_MAX
+    while True:
+        cols = max(4, (width - 26 + GAP) // (side + GAP))
+        rows = -(-most // cols)
+        if rows * (side + LABEL_H + GAP) <= room - CHROME_H or side <= TILE_MIN:
+            return side, cols
+        side -= 4
 
 
 def toggled(name: str, current: str) -> str:
@@ -55,10 +70,13 @@ class StylePanel(tk.Toplevel):
         self.configure(bg=p.field_border)
         body = tk.Frame(self, bg=p.chrome, padx=12, pady=10)
         body.pack(padx=1, pady=1)
-        self.side = max(80, (width - 26 - (COLUMNS - 1) * GAP) // COLUMNS)
         self._photos, self.tiles, self.cells = [], {}, []
         every = styles.load()
         tabs = [(t, g) for t, g in groups(every) if t != ANGLES_TAB or on_angle is not None]
+        sx, sy, sw, sh = screen_area(bar)
+        top, bottom = bar.winfo_rooty(), bar.winfo_rooty() + bar.winfo_height()
+        room = max(top - sy, sy + sh - bottom) - 12  # the panel opens below the bar, or above it if more room
+        self.side, cols = grid_size(width, room, max(len(g) for _, g in tabs))
         # what is picked, both parts: a look and an angle are used together
         summary = tk.Frame(body, bg=p.chrome)
         summary.grid(row=0, column=0, sticky="w", pady=(0, 8))
@@ -75,8 +93,8 @@ class StylePanel(tk.Toplevel):
             page = tk.Frame(stack, bg=p.chrome)
             page.grid(row=0, column=0, sticky="nw")  # measured below, then only the shown tab stays
             for i, (name, text) in enumerate(members):
-                self._tile(page, name, text, tab == ANGLES_TAB).grid(row=i // COLUMNS, column=i % COLUMNS,
-                                                  padx=(0 if i % COLUMNS == 0 else GAP, 0), pady=(0, GAP), sticky="n")
+                self._tile(page, name, text, tab == ANGLES_TAB).grid(row=i // cols, column=i % cols,
+                                                  padx=(0 if i % cols == 0 else GAP, 0), pady=(0, GAP), sticky="n")
             self.pages[tab] = page
             if tab == ANGLES_TAB:  # set apart: an angle is added on top of the look, not instead of it
                 tk.Frame(bar_row, bg=p.separator, width=1, height=20).pack(side="left", padx=(4, 8))
