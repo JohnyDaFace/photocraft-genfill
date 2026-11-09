@@ -16,9 +16,10 @@ FLUX.2 [klein]:
 - **More like this** (Generate Similar): new versions close to a result you almost like.
 - **Remove** takes away whatever is in the selection and fills in the background behind it.
 - **Select ▾** (with SAM 3) finds things by name: type "dog" or "boat" and it selects them, or pick Sky or
-  People. It can also **remove the background** around what you typed (a layer mask, nothing deleted).
+  People. It can also **remove the background** around what you typed (a layer mask, nothing deleted), and select
+  the **foreground** or **background** by distance, with nothing typed.
 - **Fix ▾** holds the one-click fixes: **Remove** what you typed, all people or all cars in one go; **Faces**;
-  **Enhance**; and the **presets** (sky, relight, portrait, reflections, colorize, restore…).
+  **Depth**; **Enhance**; and the **presets** (sky, relight, portrait, reflections, colorize, restore…).
 - **Fix faces** (Fix ▾ › Faces) finds every face and restores it up close, sharper but the same person.
   **Replace face** gives one face the face of the person in another photo, keeping the expression and pose.
 - **Reference picture**: give Generate a second image to take an object or a style from.
@@ -364,6 +365,17 @@ choose from. How far the light and colour may change is `enhance_strength` in th
   from the results as usual). Only the found shapes are redrawn, not a box around them.
 - **Select ▾ › Remove background, keep “dog”** puts a layer mask on the active layer that hides everything else. Nothing is
   deleted: paint on the mask to fix edges, or delete the mask to undo it. A Background layer becomes "Layer 0".
+
+**Depth** (Depth Anything V2 in ComfyUI works out how far away each part of the picture is; the effects are
+worked out from the picture's own pixels, so nothing is redrawn and faces, text and products stay exactly as they
+are). Each arrives as a new layer:
+
+- **Fix ▾ › Depth › Lens blur: subject sharp** blurs the rest more the further it is from the main subject, like a
+  wide-open lens. Type a thing first ("the dog") for **Lens blur: “the dog” sharp** to choose what stays in focus.
+- **Haze in the distance** and **Fog** fade the far parts into the air, thicker the further away.
+- **Select ▾ › By distance › Foreground** or **Background** selects what's near or what's far, no words needed.
+
+The first use loads the depth model (about a minute); after that it takes a few seconds.
 
 - **Fix ▾ › Faces › Sharpen faces** finds every face and restores each one up close at high resolution: sharper eyes, lashes, skin
   and hair, and still the same person. With SeedVR2 installed (the Upscale model, see the model tables) it uses

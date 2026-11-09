@@ -27,7 +27,10 @@ def test_select_only_finds_things(tmp_path, monkeypatch):
     bar = _bar(tmp_path, monkeypatch, typed="the dog")
     App.select_menu(bar)
     labels = _labels(bar.menus[0][1])
-    assert labels == ["Select", "“the dog”", "Sky", "People", "Cut out", "Remove background, keep “the dog”"]
+    assert labels == ["Select", "“the dog”", "Sky", "People", "Cut out", "Remove background, keep “the dog”",
+                      "By distance", "Foreground (what's near)", "Background (what's far)"]
+    bar.menus[0][1][-1][2]()
+    assert bar.started[-1] == ("depth_select", {"choice": "background"})
 
 
 def test_fix_holds_remove_faces_enhance_and_the_presets(tmp_path, monkeypatch):
@@ -62,3 +65,17 @@ def test_create_holds_sketch_and_photoshoot_and_photoshoot_works_with_nothing_op
     App.create_menu(empty)
     labels = _labels(empty.menus[0][1])
     assert "From my sketch (the active layer)" not in labels and "Photoshoot" in labels
+
+
+def test_fix_depth_focuses_on_the_typed_thing_only_when_picked(tmp_path, monkeypatch):
+    bar = _bar(tmp_path, monkeypatch, typed="the dog")
+    App.fix_menu(bar)
+    depth = {i[1]: i[2] for i in bar.menus[0][1] if i[0] == "sub"}["Depth"]
+    assert _labels(depth) == ["Lens blur: subject sharp", "Lens blur: “the dog” sharp", "Haze in the distance", "Fog"]
+    depth[0][2]()
+    assert bar.started[-1] == ("depth", {"choice": "blur"})
+    depth[1][2]()
+    assert bar.started[-1] == ("depth", {"choice": "blur", "what": "the dog"})
+    bar2 = _bar(tmp_path, monkeypatch)
+    App.fix_menu(bar2)
+    assert len({i[1]: i[2] for i in bar2.menus[0][1] if i[0] == "sub"}["Depth"]) == 3

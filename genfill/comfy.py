@@ -263,6 +263,20 @@ def build_segment_workflow(image_name: str, what: str, model: str = SEGMENT_MODE
     }
 
 
+DEPTH_MODEL = "depth_anything_v2_vitl.pth"
+DEPTH_RESOLUTION = 1024
+
+
+def build_depth_workflow(image_name: str, resolution: int = DEPTH_RESOLUTION, model: str = DEPTH_MODEL) -> dict:
+    """Depth Anything V2: a grey picture of how far each part is (brighter = nearer)."""
+    return {
+        "image": {"class_type": "LoadImage", "inputs": {"image": image_name}},
+        "depth": {"class_type": "DepthAnythingV2Preprocessor",
+                  "inputs": {"image": ["image", 0], "ckpt_name": model, "resolution": resolution}},
+        "out": {"class_type": "PreviewImage", "inputs": {"images": ["depth", 0]}},
+    }
+
+
 class ComfyClient:
     def __init__(self, url: str = "http://127.0.0.1:8188"):
         self.url = url.rstrip("/")
@@ -336,6 +350,12 @@ class ComfyClient:
         if spec and isinstance(spec[0], list):
             return spec[0]
         return (spec[1] or {}).get("options", []) if len(spec) > 1 else []
+
+    def has_depth(self) -> bool:
+        try:  # the node downloads its model the first time it runs
+            return "DepthAnythingV2Preprocessor" in self._json("/object_info/DepthAnythingV2Preprocessor")
+        except ComfyError:
+            return False
 
     def has_upscale_model(self, model: str = UPSCALE_MODEL) -> bool:
         """Whether ComfyUI has this upscale model (ComfyUI/models/upscale_models)."""

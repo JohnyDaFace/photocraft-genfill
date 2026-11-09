@@ -11,9 +11,10 @@ from typing import Callable
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
-from . import imaging, presets, results_store, styles
+from . import depth, imaging, presets, results_store, styles
 from .comfy import (ComfyClient, ComfyError, build_create_workflow, build_edit_workflow, build_fill_workflow,
-                    build_refine_workflow, build_seedvr_workflow, build_segment_workflow, UPSCALE_MODEL)
+                    build_depth_workflow, build_refine_workflow, build_seedvr_workflow, build_segment_workflow,
+                    UPSCALE_MODEL)
 from .photocraft_client import PhotoCraftClient, PhotoCraftError
 from .settings import Settings
 
@@ -589,6 +590,76 @@ def remove_background(what: str, settings: Settings, status: Status, progress: P
     except PhotoCraftError as e:
         raise UserFacingError(str(e)) from e
     return f"Background removed, kept {what.strip()}"
+
+
+# -- depth tools: a depth map from Depth Anything V2, the effects worked out from the picture's own pixels ---
+DEPTH_EFFECTS = {"blur": "Lens blur", "haze": "Haze", "fog": "Fog"}
+
+
+def _depth(rgb: Image.Image, cancel, comfy) -> "depth.np.ndarray":
+    comfy.check()
+    if not comfy.has_depth():
+        raise UserFacingError("Depth tools need Depth Anything V2 in ComfyUI (the comfyui_controlnet_aux nodes).")
+    side = 1024 / max(rgb.size)
+    small = rgb.resize((max(64, round(rgb.width * side)), max(64, round(rgb.height * side))), Image.LANCZOS)         if side < 1 else rgb
+    name = comfy.upload(small, "genfill_depth.png")
+    out = comfy.run(build_depth_workflow(name), lambda _f: None, cancel)
+    return depth.as_depth(out, rgb.size)
+
+
+def depth_select(which: str, settings: Settings, status: Status, progress: Progress, cancel, pc=None,
+                 comfy=None) -> str:
+    """Select the near part of the picture ("foreground") or the rest ("background")."""
+    pc, comfy = _clients(settings, pc, comfy)
+    try:
+        status("Reading the image from PhotoCraft…")
+        _, image = _read(pc)
+        status("Working out the depth… (the first time loads the model)")
+        d = _depth(_flat(image), cancel, comfy)
+    except (PhotoCraftError, ComfyError) as e:
+        raise UserFacingError(str(e)) from e
+    mask = depth.foreground(d)
+    if which == "background":
+        mask = ImageChops.invert(mask)
+    status("Selecting in PhotoCraft…")
+    _select(pc, settings, mask)
+    return f"Selected the {which}"
+
+
+def depth_effect(kind: str, settings: Settings, status: Status, progress: Progress, cancel, pc=None, comfy=None,
+                 focus_on: str = "") -> Results:
+    """Lens blur ("blur": sharp at the main subject, or at `focus_on` found by SAM 3), "haze" or "fog", as a
+    whole-picture layer. Nothing is redrawn."""
+    pc, comfy = _clients(settings, pc, comfy)
+    focus_on = focus_on.strip()
+    try:
+        status("Reading the image from PhotoCraft…")
+        doc, image = _read(pc)
+        flat = _flat(image)
+        status("Working out the depth… (the first time loads the model)")
+        progress(0.1)
+        d = _depth(flat, cancel, comfy)
+        mask = None
+        if kind == "blur" and focus_on:
+            status(f"Looking for {focus_on} to focus on…")
+            progress(0.4)
+            mask = _segment(flat, focus_on, settings, lambda _f: None, cancel, comfy)
+            if not mask.point(lambda v: 255 if v > 127 else 0).getbbox():
+                raise UserFacingError(f"Couldn't find {focus_on} in the picture. Try a simpler word, like "
+                                      "'person' or 'dog'.")
+    except (PhotoCraftError, ComfyError) as e:
+        raise UserFacingError(str(e)) from e
+    if cancel.is_set():
+        raise UserFacingError("Cancelled.")
+    status(f"{DEPTH_EFFECTS[kind]}…")
+    progress(0.7)
+    if kind == "blur":
+        out = depth.lens_blur(image, d, depth.focus_range(d, mask))
+    else:
+        out = depth.haze(image, d, kind)
+    progress(1.0)
+    layer = DEPTH_EFFECTS[kind] + (f" – {focus_on[:30]}" if kind == "blur" and focus_on else "")
+    return Results([out], [_preview(out, None)], layer, False, image.size, doc.selection)
 
 
 FACE_PROMPT = ("Same person, same face, same expression, pose, lighting and colours. A sharp, detailed, natural "

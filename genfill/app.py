@@ -26,7 +26,7 @@ from .photoshoot import SHOT_COUNTS, reshoot, run_photoshoot
 from .picker import Picker
 from .style_panel import StylePanel
 from .pipeline import (CREATE_CHOICES, EXPAND_CHOICES, FIND, MAX_VARIATIONS, UserFacingError, create, create_size,
-                       SWAP_GONE, enhance, expand, fix_faces, generate, load_reference, place, remove_background,
+                       SWAP_GONE, depth_effect, depth_select, enhance, expand, fix_faces, generate, load_reference, place, remove_background,
                        remove_things, results_for_layer, run_upscale, select_things, similar, sketch_to_image, swap)
 from .settings import SETTINGS_FILE, Settings
 from .settings_dialog import SettingsDialog
@@ -278,7 +278,7 @@ class App:
         self.sel_btn = button(icon="target", text="Select", kind="outline", chevron=True, command=self.select_menu,
                               tooltip="Find things by name (SAM 3) and select them, or remove the background")
         self.fix_btn = button(icon="wand", text="Fix", kind="outline", chevron=True, command=self.fix_menu,
-                              tooltip="Remove things, fix faces, enhance, and one-click presets")
+                              tooltip="Remove things, fix faces, depth (lens blur, haze), enhance, and one-click presets")
         self.size_btn = button(icon="expand", text="Resize", kind="outline", chevron=True, command=self.resize_menu,
                                tooltip="Expand the canvas, or upscale to a bigger copy")
         self.create_btn = button(icon="create", text="Create", kind="outline", chevron=True, command=self.create_menu,
@@ -566,7 +566,10 @@ class App:
                  ("item", "People", lambda: self.start("select", what=FIND["people"][0], label=FIND["people"][1])),
                  ("sep",), ("header", "Cut out"),
                  ("item", f"Remove background, keep “{short}”" if typed else "Remove background…",
-                  (lambda: self.start("cutout", what=typed)) if typed else hint)]
+                  (lambda: self.start("cutout", what=typed)) if typed else hint),
+                 ("sep",), ("header", "By distance"),
+                 ("item", "Foreground (what's near)", lambda: self.start("depth_select", choice="foreground")),
+                 ("item", "Background (what's far)", lambda: self.start("depth_select", choice="background"))]
         self._menu(self.sel_btn, items)
 
     def fix_menu(self) -> None:
@@ -585,9 +588,15 @@ class App:
             faces.append(("item", f"Replace with {name}", lambda: self.start("faces", choice="reference")))
         faces.append(("item", "Replace with another photo…" if self.reference else "Replace with a photo…",
                       self._replace_face_with_photo))
+        lens = [("item", "Lens blur: subject sharp", lambda: self.start("depth", choice="blur"))]
+        if typed:  # focus on the typed thing only when picked
+            lens.append(("item", f"Lens blur: “{short}” sharp", lambda: self.start("depth", choice="blur", what=typed)))
+        lens += [("item", "Haze in the distance", lambda: self.start("depth", choice="haze")),
+                 ("item", "Fog", lambda: self.start("depth", choice="fog"))]
         items = [("header", "Fix"),
                  ("sub", "Remove", remove),
                  ("sub", "Faces", faces),
+                 ("sub", "Depth", lens),
                  ("item", "Enhance: crisper, better light", lambda: self.start("enhance")),
                  ("sep",), ("header", "Presets")] + self.preset_items()
         self._menu(self.fix_btn, items)
@@ -797,7 +806,7 @@ class App:
             prompt = presets.prompt_for(preset) or ""
         else:
             prompt = self.prompt.get() if job in ("fill", "remove", "create", "sketch") else ""  # the prompt belongs to Generate
-        if what and not label and job != "photoshoot":
+        if what and not label and job not in ("photoshoot", "depth"):
             self.settings.remember_prompt(what)  # typed words used to find things go in the history too
         if job == "upscale":
             self.settings.upscale_factor = factor or self.settings.upscale_factor
@@ -806,7 +815,8 @@ class App:
         elif job == "create":
             self.settings.create_choice = choice or self.settings.create_choice
             self.settings.remember_prompt(prompt)
-        elif job in ("select", "remove_things", "cutout", "faces", "enhance", "photoshoot", "reshoot") or preset:
+        elif job in ("select", "remove_things", "cutout", "faces", "enhance", "photoshoot", "reshoot", "depth",
+                     "depth_select") or preset:
             pass
         else:
             self.settings.remember_prompt(prompt)
@@ -841,6 +851,15 @@ class App:
             def fn(_prompt, settings, status, progress, cancel):
                 return remove_background(what, settings, status, progress, cancel)
             self.say(f"Looking for {what}…", None)
+        elif job == "depth_select":
+            def fn(_prompt, settings, status, progress, cancel):
+                return depth_select(choice, settings, status, progress, cancel)
+            self.say(f"Finding the {choice}…", None)
+        elif job == "depth":
+            def fn(_prompt, settings, status, progress, cancel):
+                return self._offer(depth_effect(choice, settings, status, progress, cancel, focus_on=what),
+                                   settings, status)
+            self.say("Working out the depth…", None)
         elif job == "enhance":
             extra = self.prompt.get().strip()
 
