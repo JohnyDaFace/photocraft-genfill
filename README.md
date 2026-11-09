@@ -119,7 +119,7 @@ The Style panel: click a thumbnail to turn it on, click it again to turn it off.
 
 Not every try is a hit: that's why Generate makes several versions (3 by default) to pick from.
 
-![The Presets and Expand menus](docs/showcase/bar-menus.png)
+![The Remove menu, and the Fix menu with Blur & haze open](docs/showcase/bar-menus.png)
 
 ## What you need
 
