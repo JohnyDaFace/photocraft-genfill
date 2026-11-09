@@ -449,15 +449,21 @@ class ComfyClient:
         except ComfyError:
             pass
 
-    def run(self, workflow: dict, on_progress: Callable[[float | None], None], cancel) -> Image.Image:
-        """Queue the workflow, wait for it, and return its first output image."""
-        return self._fetch(self._outputs(workflow, on_progress, cancel)[0])
+    def object_info(self) -> dict:
+        """Every node ComfyUI has, with how its inputs are laid out."""
+        return self._json("/object_info")
+
+    def run(self, workflow: dict, on_progress: Callable[[float | None], None], cancel,
+            node: str | None = None) -> Image.Image:
+        """Queue the workflow, wait for it, and return its first output image (of `node`, when given)."""
+        return self._fetch(self._outputs(workflow, on_progress, cancel, node)[0])
 
     def run_all(self, workflow: dict, on_progress: Callable[[float | None], None], cancel) -> list[Image.Image]:
         """Like `run`, but every output image (e.g. one mask per thing SAM 3 found)."""
         return [self._fetch(im) for im in self._outputs(workflow, on_progress, cancel)]
 
-    def _outputs(self, workflow: dict, on_progress: Callable[[float | None], None], cancel) -> list[dict]:
+    def _outputs(self, workflow: dict, on_progress: Callable[[float | None], None], cancel,
+                 node: str | None = None) -> list[dict]:
         """Queue the workflow, wait for it, and return its output images' descriptions (at least one)."""
         res = self._json("/prompt", {"prompt": workflow, "client_id": self.client_id})
         if "prompt_id" not in res or res.get("node_errors"):
@@ -477,7 +483,10 @@ class ComfyClient:
                 status = entry.get("status", {})
                 if status.get("status_str") == "error":
                     raise ComfyError("ComfyUI failed: " + _error_text(status))
-                images = [im for out in entry.get("outputs", {}).values() for im in out.get("images", [])]
+                outputs = entry.get("outputs", {})
+                if node is not None and node in outputs:  # the result node, not a preview along the way
+                    outputs = {node: outputs[node]}
+                images = [im for out in outputs.values() for im in out.get("images", [])]
                 if images:
                     return images
                 if status.get("completed"):

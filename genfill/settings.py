@@ -90,6 +90,8 @@ class Settings:
     models: dict = field(default_factory=lambda: dict(DEFAULT_MODELS))  # its files
     loras: list = field(default_factory=list)  # optional, settings file only: file names or {"name", "strength"}
     other_families: dict = field(default_factory=dict)  # the files, steps and LoRAs of the families not in use
+    custom_workflow: str = ""  # your own ComfyUI workflow for Generate and Create: the file it came from ("" = off)
+    custom_slots: dict = field(default_factory=dict)  # which of its nodes take the picture, prompt, result…
 
     @property
     def workflow_models(self) -> dict:
@@ -142,6 +144,8 @@ class Settings:
         s.models = {**family(s.model_family).models, **(s.models if isinstance(s.models, dict) else {})}
         if not isinstance(s.other_families, dict):
             s.other_families = {}
+        if not isinstance(s.custom_slots, dict):
+            s.custom_slots = {}
         s.recent_prompts = [str(x) for x in s.recent_prompts][:MAX_RECENT] if isinstance(s.recent_prompts, list) else []
         return s
 

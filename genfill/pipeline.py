@@ -11,7 +11,7 @@ from typing import Callable
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
-from . import depth, imaging, presets, results_store, styles
+from . import custom_workflow, depth, imaging, presets, results_store, settings as settings_file, styles
 from .dpi import px
 from .families import family
 from .comfy import (ComfyClient, ComfyError, build_create_workflow, build_edit_workflow, build_fill_workflow,
@@ -64,6 +64,7 @@ class Job:
     prompt: str                       # as sent to the model
     reference: Image.Image | None = None
     create: bool = False              # a new picture from the prompt alone (`base` is a blank of its size)
+    custom: bool = False              # may run your own workflow (Settings) instead of GenFill's (Generate, Create)
 
 
 @dataclass
@@ -174,6 +175,21 @@ def _read(pc, need_selection: str | None = None):
         return doc, pc.render()
 
 
+def _own_workflow(settings: Settings) -> tuple[dict, dict] | None:
+    """Your workflow from Settings and which of its nodes take what (None: GenFill's own is used)."""
+    if not settings.custom_workflow:
+        return None
+    wf = custom_workflow.load_saved(settings_file.CONFIG_DIR)
+    if wf is None:
+        raise UserFacingError(f"Your workflow ({Path(settings.custom_workflow).name}) can't be read any more. "
+                              "Pick it again in Settings, or clear it to use GenFill's own.")
+    slots = {k: v for k, v in settings.custom_slots.items() if v in wf}
+    if not slots.get("result"):
+        raise UserFacingError("Your workflow has no result picked. In Settings, choose which node's picture "
+                              "is the result (a Save Image or Preview Image node).")
+    return wf, slots
+
+
 def _candidates(job: Job, settings: Settings, status: Status, progress: Progress, cancel, comfy, count: int,
                 start: Image.Image | None = None, denoise: float = 1.0) -> list[Image.Image]:
     """Run the model `count` times with different seeds. `start` (a previous result) + `denoise` < 1
@@ -189,33 +205,65 @@ def _candidates(job: Job, settings: Settings, status: Status, progress: Progress
     else:
         ww, wh = imaging.working_size(src.width, src.height, settings.megapixels)
     fam = family(settings.model_family)
-    if edit and not job.create and fam.encoder == "text":  # Create (and its Similar) is fine
+    own = _own_workflow(settings) if job.custom else None  # (workflow, slots): yours from Settings
+    slots = own[1] if own else {}
+    if edit and not job.create and fam.encoder == "text" and not own:  # Create (and its Similar) is fine
         raise UserFacingError(f"{fam.label.split(' (')[0]} can only make new pictures, not edit one. "
                               "Select an area to fill, or pick another image model in Settings.")
     status("Sending to ComfyUI…")
     comfy.check()
-    if not (job.create and start is None):  # creating needs no picture to start from
-        prepared = _flat(src) if edit else imaging.prepare_source(src)
+    src_name = mask_name = None
+    if not (job.create and start is None) or slots.get("picture"):  # creating needs no picture to start from
+        prepared = _flat(src) if edit or own else imaging.prepare_source(src)
         sent = prepared.crop(crop) if crop else prepared
-        src_name = comfy.upload(sent.resize((ww, wh), Image.LANCZOS), "genfill_src.png")
-    if not edit:
+        if not own or slots.get("picture"):
+            sent = sent.resize((ww, wh), Image.LANCZOS)
+            if own and not edit and not slots.get("mask") and custom_workflow.picture_carries_mask(own[0], slots):
+                sent_mask = (job.mask.crop(crop) if crop else job.mask).resize((ww, wh), Image.BILINEAR)
+                sent = sent.convert("RGBA")  # the picture, with the selection in its alpha
+                sent.putalpha(custom_workflow.mask_upload(sent_mask).getchannel("A"))
+            src_name = comfy.upload(sent, "genfill_src.png")
+    if not edit and (not own or slots.get("mask")):
         sent_mask = job.mask.crop(crop) if crop else job.mask
-        mask_name = comfy.upload(sent_mask.resize((ww, wh), Image.BILINEAR).convert("RGB"), "genfill_mask.png")
+        sent_mask = sent_mask.resize((ww, wh), Image.BILINEAR)
+        mask_name = comfy.upload(custom_workflow.mask_upload(sent_mask) if own else sent_mask.convert("RGB"),
+                                 "genfill_mask.png")
     refs = [comfy.upload(_reference_upload(job.reference, settings.megapixels), "genfill_ref.png")] \
-        if job.reference is not None else []
+        if job.reference is not None and (not own or slots.get("reference")) else []
+    who = "your workflow" if own else fam.label.split(' (')[0]
+    left_out = "" if job.reference is None else \
+        ("It takes no reference picture, so the reference is left out." if own and not refs else
+         "It can't see pictures, so the reference is left out." if not own and fam.encoder == "text" else "")
     images = []
     for i in range(count):
         if cancel.is_set():
             raise UserFacingError("Cancelled.")
         what = "Creating" if job.create else "Editing the image" if edit else "Generating"
-        status(f"{what} with {fam.label.split(' (')[0]}" +(f" ({i + 1} of {count})" if count > 1 else "") + "…"
-               + (" (first run loads the model)" if i == 0 else "")
-               + (" It can't see pictures, so the reference is left out." if refs and fam.encoder == "text" else ""))
+        status(f"{what} with {who}" + (f" ({i + 1} of {count})" if count > 1 else "") + "…"
+               + (" (first run loads the model)" if i == 0 else "") + (" " + left_out if left_out else ""))
         if count > 1:
             progress(i / count)
         seed = random.randint(0, 2**32 - 1)
         on_progress = progress if count == 1 else (lambda _f: None)
-        if job.create and start is None:
+        if own:
+            wf = custom_workflow.prepare(own[0], slots, job.prompt, seed, src_name, mask_name,
+                                         refs[0] if refs else None, (ww, wh))
+            out = comfy.run(wf, on_progress, cancel, node=slots.get("result")).convert("RGB")
+            if job.create or edit:
+                out = out.resize(job.base.size, Image.LANCZOS).convert("RGBA")
+                if not job.create:
+                    out.putalpha(job.base.getchannel("A"))
+            else:  # only the selection changes, whatever the workflow drew elsewhere
+                out = out.resize((ww, wh), Image.LANCZOS)
+                if crop:
+                    full = prepared.copy()
+                    full.paste(out.resize((cw, ch), Image.LANCZOS), crop[:2])
+                    out = full
+                else:
+                    out = out.resize(job.base.size, Image.LANCZOS)
+                out = imaging.match_colors(job.base, out, job.mask)
+                out = imaging.merge(job.base, out, imaging.blend_mask(job.base, job.selection))
+        elif job.create and start is None:
             wf = build_create_workflow(job.prompt, seed, settings.steps, ww, wh, settings.workflow_models, refs)
             out = comfy.run(wf, on_progress, cancel).resize(job.base.size, Image.LANCZOS).convert("RGBA")
         elif edit:
@@ -281,7 +329,7 @@ def generate(prompt: str, settings: Settings, status: Status, progress: Progress
             told = styles.styled(label, settings.style, restyle=True, edit=True, angle=settings.angle)
         else:
             told = label if edit else fill_text(label, settings)
-        job = Job(image, mask, doc.selection, told, None if remove else reference)
+        job = Job(image, mask, doc.selection, told, None if remove else reference, custom=not remove)
         images = _candidates(job, settings, status, progress, cancel, comfy, count)
         if edit and name in presets.KEEP_COLOURS:
             images = [imaging.keep_colors(image, im) for im in images]
@@ -987,7 +1035,7 @@ def create(choice: str, prompt: str, settings: Settings, status: Status, progres
     count = max(1, min(MAX_VARIATIONS, count or settings.variations))
     W, H = create_size(choice, settings.megapixels)
     base = Image.new("RGBA", (W, H), (255, 255, 255, 255))
-    job = Job(base, None, None, label_for_model, reference, create=True)
+    job = Job(base, None, None, label_for_model, reference, create=True, custom=True)
     try:
         images = _candidates(job, settings, status, progress, cancel, comfy, count)
     except ComfyError as e:

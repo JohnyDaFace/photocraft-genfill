@@ -164,6 +164,8 @@ picture barely changes it: restyle with FLUX.2 or Qwen.
 Replace face's head-swap LoRA (below) is made for FLUX.2 Klein, so with the other models it borrows only the face.
 Your own LoRAs are kept per model: switching models switches them too.
 
+**Or your own ComfyUI workflow** for Generate and Create: see [Your own ComfyUI workflow](#your-own-comfyui-workflow).
+
 For **Select ▾** (optional; everything else works without it):
 
 | File | Put it in `ComfyUI/models/…` | Download |
@@ -461,6 +463,39 @@ port, and:
 - **Undo PhotoCraft setup**: removes the connection settings again.
 
 The number of results per Generate is chosen on the bar and remembered.
+
+### Your own ComfyUI workflow
+
+Have a workflow you like in ComfyUI (another model, your LoRAs, an upscaler at the end…)? GenFill can draw with
+it instead of its own. Under **⋯ › Settings… › Your workflow**, click **Choose…** and pick the same `.json` file
+you load in ComfyUI. Both kinds of save work: the normal save (Workflow › Save), subgraphs included, and
+Workflow › Export (API).
+
+GenFill then shows what it found in the workflow, and you can change any of it:
+
+| Part | What GenFill puts there | Found as |
+|---|---|---|
+| Picture | the picture (or the part around your selection) | a Load Image node |
+| Selection (mask) | your selection, white where to draw | a Load Image Mask node, or a Load Image titled "mask" |
+| Reference picture | the picture from **Reference…** | a second Load Image, or one titled "reference" |
+| Prompt | what you type (with the style or angle that's on) | the text box that reaches the sampler's positive input, never the negative one |
+| Result | the picture brought back | the last Save Image (or Preview Image) node |
+
+Every seed in the workflow gets a new random value on each run, so each result is different, and an empty latent
+gets GenFill's working size. Steps, sampler, LoRAs and model files stay as they are in your workflow.
+
+- **Used by Generate and Create** (and More like this). With a selection, only the selected area changes, even if
+  your workflow redraws the whole picture: GenFill blends its result into the selection, as it does with its own.
+  A workflow without a picture input just makes a new picture from your prompt. A workflow whose Load Image also
+  gives the mask (painted in ComfyUI's mask editor) gets your selection in the picture's transparency.
+- **Everything else keeps GenFill's own workflows** and the image model above: Expand, Remove, Select, Remove
+  background, Depth, Fix faces, Replace face, Enhance, Upscale and Photoshoot. Those still need their own files
+  (see the tables above).
+- **Missing nodes**: GenFill tells you which ones when you pick the file. Install them as you would in ComfyUI
+  (ComfyUI Manager › Install Missing Custom Nodes) and restart ComfyUI. Missing model files show up as ComfyUI's own
+  message when you Generate.
+- GenFill keeps its own copy of the workflow with your settings. After changing the workflow in ComfyUI, pick it
+  again. **Clear** goes back to GenFill's own.
 
 **Updates**: at startup the bar asks GitHub whether a newer version exists; if so, a blue dot appears on
 **⋯**, and the menu has a link to the download page. Turn this off under Settings › Updates. The **⋯** menu

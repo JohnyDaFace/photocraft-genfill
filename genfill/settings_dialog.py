@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import threading
 import tkinter as tk
-from tkinter import messagebox, ttk
+from pathlib import Path
+from tkinter import filedialog, messagebox, ttk
 
-from . import __version__, setup_env, theme
+from . import __version__, custom_workflow, setup_env, theme
 from .comfy import MODEL_SLOTS, ComfyClient, ComfyError
 from .families import FAMILIES, family
 from .dpi import px
 from .compat import run_checks
-from .settings import Settings, find_photocraft_cli
+from .settings import CONFIG_DIR, Settings, find_photocraft_cli
 
 LABELS = {"unet": "Model file", "clip": "Text encoder", "vae": "VAE"}
 
@@ -69,6 +70,36 @@ class SettingsDialog(tk.Toplevel):
             cb.grid(row=row, column=1, columnspan=2, sticky="ew", pady=px(4))
             self.combos[slot] = cb
             row += 1
+
+        # Your own workflow for Generate and Create (custom_workflow.py)
+        label("Your workflow", row)
+        own_row = tk.Frame(fr, bg=p.chrome)
+        own_row.grid(row=row, column=1, columnspan=2, sticky="ew", pady=px(4))
+        self.own_path = settings.custom_workflow
+        self.own_wf = custom_workflow.load_saved(CONFIG_DIR) if settings.custom_workflow else None
+        self.own_name = tk.StringVar()
+        tk.Label(own_row, textvariable=self.own_name, bg=p.chrome, fg=p.text, font=f["body"], anchor="w").pack(
+            side="left", fill="x", expand=True)
+        theme.PillButton(own_row, "Clear", self.clear_workflow, p, f["small"], kind="quiet", height=24).pack(
+            side="right", padx=(px(4), 0))
+        theme.PillButton(own_row, "Choose…", self.choose_workflow, p, f["small"], height=24).pack(side="right")
+        row += 1
+        self.own_frame = tk.Frame(fr, bg=p.chrome)
+        self.own_frame.grid(row=row, column=1, columnspan=2, sticky="ew")
+        self.own_frame.columnconfigure(1, weight=1)
+        self.slot_vars, self.slot_boxes, self.slot_ids = {}, {}, {}
+        for i, slot in enumerate(custom_workflow.SLOTS):
+            tk.Label(self.own_frame, text=custom_workflow.SLOT_LABELS[slot], bg=p.chrome, fg=p.text_faint,
+                     font=f["small"]).grid(row=i, column=0, sticky="w", padx=(0, px(8)), pady=px(2))
+            v = self.slot_vars[slot] = tk.StringVar()
+            cb = ttk.Combobox(self.own_frame, textvariable=v, style="PC.TCombobox", font=f["small"], state="readonly")
+            cb.grid(row=i, column=1, sticky="ew", pady=px(2))
+            self.slot_boxes[slot] = cb
+        tk.Label(self.own_frame, text="Used by Generate and Create. Everything else keeps the image model above.",
+                 bg=p.chrome, fg=p.text_faint, font=f["small"], anchor="w").grid(
+            row=len(custom_workflow.SLOTS), column=0, columnspan=2, sticky="w", pady=(px(2), px(4)))
+        self._show_workflow(settings.custom_slots)
+        row += 1
 
         heading("Quality", row); row += 1
         self.steps_label = tk.Label(fr, text=self._steps_text(), bg=p.chrome, fg=p.text_dim, font=f["small"])
@@ -153,6 +184,69 @@ class SettingsDialog(tk.Toplevel):
     def test_comfy(self) -> None:
         self.load_models()
 
+    # -- your workflow ---------------------------------------------------------------------------
+    def _show_workflow(self, slots: dict | None = None) -> None:
+        """Show the workflow's name and, for each slot, which node GenFill uses (`slots`, else its guess)."""
+        wf = self.own_wf
+        if wf is None:
+            self.own_name.set("None – GenFill's own")
+            self.own_frame.grid_remove()
+            return
+        self.own_name.set(Path(self.own_path).name)
+        found = custom_workflow.detect(wf)
+        chosen = {**found, **{k: v for k, v in (slots or {}).items() if v is None or v in wf}} if slots else found
+        options = custom_workflow.candidates(wf)
+        for slot in custom_workflow.SLOTS:
+            ids = {custom_workflow.label(wf, None): None,
+                   **{custom_workflow.label(wf, i): i for i in options[slot]}}
+            self.slot_ids[slot] = ids
+            self.slot_boxes[slot].configure(values=list(ids))
+            self.slot_vars[slot].set(custom_workflow.label(wf, chosen.get(slot)))
+        self.own_frame.grid()
+
+    def _slots(self) -> dict:
+        return {slot: self.slot_ids.get(slot, {}).get(self.slot_vars[slot].get()) for slot in custom_workflow.SLOTS}
+
+    def choose_workflow(self) -> None:
+        path = filedialog.askopenfilename(parent=self, title="Your ComfyUI workflow",
+                                          filetypes=[("ComfyUI workflow", "*.json"), ("All files", "*.*")])
+        if not path:
+            return
+        url = self.vars["comfy_url"].get().strip()
+        self.msg.set("Reading the workflow and asking ComfyUI about its nodes…")
+
+        def work():
+            try:
+                data = custom_workflow.read(path)
+                try:
+                    info = ComfyClient(url).object_info()
+                except ComfyError as e:
+                    if not custom_workflow.is_api(data):
+                        raise custom_workflow.WorkflowError(
+                            f"{e} GenFill asks ComfyUI how the workflow's nodes are laid out.") from e
+                    info = None
+                wf = custom_workflow.to_api(data, info or {})
+                missing = custom_workflow.missing_nodes(wf, info) if info else []
+                self.after(0, lambda: self._workflow_read(path, wf, missing))
+            except custom_workflow.WorkflowError as e:
+                self.after(0, lambda: self.msg.set(str(e)))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _workflow_read(self, path: str, wf: dict, missing: list[str]) -> None:
+        self.own_path, self.own_wf = path, wf
+        self._show_workflow()
+        notes = custom_workflow.problems(self._slots())
+        if missing:
+            notes.insert(0, "Your ComfyUI doesn't have these nodes: " + ", ".join(missing) + ". Install them "
+                         "(ComfyUI Manager › Install Missing Custom Nodes) and restart ComfyUI.")
+        self.msg.set("\n".join(notes) if notes else
+                     "Workflow read. Check what GenFill found for each part, change any that's wrong, then Save.")
+
+    def clear_workflow(self) -> None:
+        self.own_path, self.own_wf = "", None
+        self._show_workflow()
+        self.msg.set("Generate and Create will use GenFill's own workflow again (after Save).")
+
     # -- PhotoCraft ------------------------------------------------------------------------------
     def check_compat(self) -> None:
         win = tk.Toplevel(self)
@@ -190,6 +284,8 @@ class SettingsDialog(tk.Toplevel):
             s.port = max(1, min(65535, int(self.vars["port"].get())))
             s.photocraft_cli = self.vars["photocraft_cli"].get().strip()
             s.check_updates = bool(self.check_updates.get())
+            s.custom_workflow = self.own_path if self.own_wf is not None else ""
+            s.custom_slots = self._slots() if self.own_wf is not None else {}
             return s
         except ValueError:
             self.msg.set("Steps and port must be whole numbers, strength a number like 0.3.")
@@ -199,6 +295,12 @@ class SettingsDialog(tk.Toplevel):
         s = self._collect()
         if s is None:
             return
+        if self.own_wf is not None:
+            if not s.custom_slots.get("result"):
+                self.msg.set("Pick which node's picture is the result (a Save Image or Preview Image node), "
+                             "or clear the workflow.")
+                return
+            custom_workflow.save(self.own_wf, CONFIG_DIR)
         s.save()
         self.on_save(s)
         self.destroy()
