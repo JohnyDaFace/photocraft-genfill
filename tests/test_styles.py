@@ -195,16 +195,19 @@ def test_clicking_the_style_that_is_on_turns_it_off():
 
 
 def test_style_tiles_fit_the_screen():
-    from genfill.style_panel import CHROME_H, GAP, LABEL_H, TILE_MAX, TILE_MIN, grid_size
-    assert grid_size(1360, 1000, 25) == (TILE_MAX, 9)       # plenty of room: full size, as many as fit a row
-    side, cols = grid_size(980, 600, 25)                     # a short screen: smaller tiles, more to a row
-    assert TILE_MIN <= side < TILE_MAX and -(-25 // cols) * (side + LABEL_H + GAP) <= 600 - CHROME_H
-    assert grid_size(600, 300, 40)[0] == TILE_MIN            # never smaller than TILE_MIN
+    from genfill.style_panel import CHROME_H, COLS, GAP, LABEL_H, MAX_ROWS, TILE_MAX, TILE_MIN, grid_size
+    row = TILE_MAX + LABEL_H + GAP
+    assert grid_size(1920, 1000, 27) == (TILE_MAX, COLS, MAX_ROWS * row)  # full size, 6 to a row; the rest scrolls
+    assert grid_size(1920, 1000, 10)[2] == 2 * row                        # a short tab: no empty rows
+    assert grid_size(1920, 600, 27)[2] == 600 - CHROME_H                  # a short screen: what fits (a part row)
+    assert grid_size(1920, 300, 27)[2] == 2 * row                         # but always 2 rows
+    assert grid_size(600, 1000, 27)[0] < TILE_MAX                   # a narrow monitor: smaller tiles…
+    assert grid_size(300, 1000, 27)[0] == TILE_MIN                  # …but never smaller than TILE_MIN
 
 
 def test_style_tiles_grow_with_display_scaling(monkeypatch):
     from genfill import dpi, style_panel
-    at_100 = style_panel.grid_size(942, 2000, 40)
+    at_100 = style_panel.grid_size(1920, 1000, 40)
     monkeypatch.setattr(dpi, "SCALE", 1.5)
-    side, cols = style_panel.grid_size(round(942 * 1.5), 3000, 40)
-    assert side == round(at_100[0] * 1.5) and cols == at_100[1]  # the same panel, just sharper
+    side, cols, view = style_panel.grid_size(round(1920 * 1.5), 1500, 40)
+    assert side == round(at_100[0] * 1.5) and cols == at_100[1] and view == round(at_100[2] * 1.5)  # just sharper

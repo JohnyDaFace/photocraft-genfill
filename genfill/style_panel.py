@@ -16,11 +16,13 @@ from .dpi import px
 from .widgets import BarButton, monitor_area, round_corners
 
 GAP = 8
-TILE_MAX = 140     # thumbnails are at most this big…
-TILE_MIN = 72      # …and shrink down to this so the biggest tab fits on the screen
+TILE_MAX = 140     # thumbnails are this big…
+TILE_MIN = 72      # …or smaller, only when the monitor is too narrow for COLS of them
+COLS = 6           # tiles to a row: the panel stays about this wide, and longer tabs scroll
+MAX_ROWS = 4       # rows shown at once (fewer on a short screen); the rest scroll
 LABEL_H = 38       # a tile's name under it (two lines) and the highlight border
-CHROME_H = 150     # the panel around the tiles: summary, tabs, footer, padding
-WIDE_MAX = 1360    # the panel may be wider than the bar, up to this (and the monitor's width)
+CHROME_H = 130     # the panel around the tiles: summary, tabs, footer, padding
+SCROLL_W = 10      # the scrollbar beside the tiles
 BUILT_IN = {n for n, _ in styles.DEFAULT_STYLES}
 ANGLES_TAB = "Angles"
 
@@ -36,16 +38,18 @@ def groups(every: list[tuple[str, str]]) -> list[tuple[str, list[tuple[str, str]
     return [(t, off + g) for t, g in tabs if g] + [(ANGLES_TAB, off + styles.ANGLES)]
 
 
-def grid_size(width: int, room: int, most: int) -> tuple[int, int]:
-    """(thumbnail side, columns) so `most` tiles fit in `width` by `room` pixels: as big as TILE_MAX, smaller
-    (and more to a row) only when the screen has no room for them."""
-    gap, side = px(GAP), px(TILE_MAX)
-    while True:
-        cols = max(4, (width - px(26) + gap) // (side + gap))
-        rows = -(-most // cols)
-        if rows * (side + px(LABEL_H) + gap) <= room - px(CHROME_H) or side <= px(TILE_MIN):
-            return side, cols
+def grid_size(screen_w: int, room: int, most: int) -> tuple[int, int, int]:
+    """(thumbnail side, columns, height of the scrolled view) for a tab of `most` tiles on a monitor
+    `screen_w` wide with `room` pixels above or below the bar: COLS full-size tiles to a row, up to
+    MAX_ROWS rows in view (less on a short screen, never under 2 rows; a part row shows there's more),
+    and no taller than the tab; a longer tab scrolls."""
+    gap, side, cols = px(GAP), px(TILE_MAX), COLS
+    usable = screen_w - px(24 + 26 + SCROLL_W + GAP)
+    while cols * (side + gap) > usable and side > px(TILE_MIN):
         side -= px(4)
+    row_h = side + px(LABEL_H) + gap
+    view = max(2 * row_h, min(MAX_ROWS * row_h, room - px(CHROME_H)))
+    return side, cols, min(view, -(-most // cols) * row_h)
 
 
 def toggled(name: str, current: str) -> str:
@@ -78,8 +82,7 @@ class StylePanel(tk.Toplevel):
         sx, sy, sw, sh = monitor_area(bar)
         top, bottom = bar.winfo_rooty(), bar.winfo_rooty() + bar.winfo_height()
         room = max(top - sy, sy + sh - bottom) - px(12)  # the panel opens below the bar, or above it if more room
-        width = max(width, min(sw - px(24), px(WIDE_MAX)))  # wider rows: bigger tiles on a short screen
-        self.side, cols = grid_size(width, room, max(len(g) for _, g in tabs))
+        self.side, cols, shown = grid_size(sw, room, max(len(g) for _, g in tabs))
         # what is picked, both parts: a look and an angle are used together
         summary = tk.Frame(body, bg=p.chrome)
         summary.grid(row=0, column=0, sticky="w", pady=(0, px(8)))
@@ -89,8 +92,14 @@ class StylePanel(tk.Toplevel):
             self.angle_chip = self._chip(summary, "Angle", lambda: self.show_tab(ANGLES_TAB))
         bar_row = tk.Frame(body, bg=p.chrome)
         bar_row.grid(row=1, column=0, sticky="w", pady=(0, px(8)))
-        stack = tk.Frame(body, bg=p.chrome)
-        stack.grid(row=2, column=0, sticky="nw")
+        view = tk.Frame(body, bg=p.chrome)  # the tiles, scrolled when a tab has more rows than fit
+        view.grid(row=2, column=0, sticky="nw")
+        self.canvas = tk.Canvas(view, bg=p.chrome, highlightthickness=0, bd=0)
+        self.canvas.pack(side="left")
+        self.scroll = tk.Canvas(view, bg=p.chrome, highlightthickness=0, bd=0, width=px(SCROLL_W))
+        self.scroll.pack(side="left", fill="y", padx=(px(GAP), 0))
+        stack = tk.Frame(self.canvas, bg=p.chrome)
+        self.canvas.create_window(0, 0, window=stack, anchor="nw")
         self.pages, self.tab_labels = {}, {}
         for tab, members in tabs:
             page = tk.Frame(stack, bg=p.chrome)
@@ -106,10 +115,15 @@ class StylePanel(tk.Toplevel):
                             command=lambda t=tab: self.show_tab(t))
             btn.pack(side="left", padx=(0, px(6)))
             self.tab_labels[tab] = btn
-        self.update_idletasks()  # the panel keeps the biggest tab's size, so switching tabs doesn't jump
-        stack.configure(width=max(pg.winfo_reqwidth() for pg in self.pages.values()),
-                        height=max(pg.winfo_reqheight() for pg in self.pages.values()))
-        stack.grid_propagate(False)
+        self.update_idletasks()  # the view keeps one size for every tab, so switching tabs doesn't jump
+        self.row_h = self.side + px(LABEL_H) + px(GAP)
+        self._thumb, self._grab = (0, 0, 0), 0
+        self.canvas.configure(width=max(pg.winfo_reqwidth() for pg in self.pages.values()),
+                              height=min(shown, max(pg.winfo_reqheight() for pg in self.pages.values())))
+        self.scroll.configure(height=self.canvas.winfo_reqheight())
+        self.scroll.bind("<ButtonPress-1>", self._scroll_press)
+        self.scroll.bind("<B1-Motion>", self._scroll_drag)
+        self.bind("<MouseWheel>", self._wheel)
         self.show_tab(tab_of(current, every))
         row = 3
         foot = tk.Frame(body, bg=p.chrome)
@@ -162,6 +176,53 @@ class StylePanel(tk.Toplevel):
                 page.grid_remove()
         for t, btn in self.tab_labels.items():
             btn.configure_button(kind="primary" if t == tab else "outline")
+        page = self.pages[tab]
+        self.canvas.configure(scrollregion=(0, 0, page.winfo_reqwidth(), page.winfo_reqheight()))
+        self.canvas.yview_moveto(0)
+        self._draw_scroll()
+
+    # -- scrolling ---------------------------------------------------------------------------------
+    def _overflow(self) -> int:
+        """How many pixels of the shown tab don't fit in the view (0: no scrolling)."""
+        return max(0, self.pages[self.tab].winfo_reqheight() - int(self.canvas.cget("height")))
+
+    def _draw_scroll(self) -> None:
+        """A slim thumb in the panel's colours (none when the tab fits)."""
+        self.scroll.delete("all")
+        if not self._overflow():
+            return
+        h, total = int(self.scroll.cget("height")), self.pages[self.tab].winfo_reqheight()
+        top, bottom = self.canvas.yview()
+        y0, y1 = top * h, max(top * h + px(24), bottom * h)
+        w = px(SCROLL_W)
+        self.scroll.create_rectangle(w // 2 - 1, 0, w // 2 + 1, h, fill=self.p.separator, width=0)
+        self.scroll.create_rectangle(1, y0, w - 1, y1, fill=self.p.text_faint, width=0)
+        self._thumb = (y0, y1, total)
+
+    def _scroll_to(self, fraction: float) -> None:
+        total = self.pages[self.tab].winfo_reqheight()
+        self.canvas.yview_moveto(max(0.0, min(self._overflow() / total, fraction)))
+        self._draw_scroll()
+
+    def _wheel(self, e) -> None:
+        over = self._overflow()
+        if over:
+            total = self.pages[self.tab].winfo_reqheight()
+            top = self.canvas.yview()[0] * total + (-1 if e.delta > 0 else 1) * self.row_h / 2
+            self._scroll_to(max(0, min(over, top)) / total)
+
+    def _scroll_press(self, e) -> None:
+        if not self._overflow():
+            return
+        y0, y1, _ = self._thumb
+        if not y0 <= e.y <= y1:  # a click on the track: jump there
+            self._scroll_to((e.y - (y1 - y0) / 2) / int(self.scroll.cget("height")))
+            y0, y1, _ = self._thumb
+        self._grab = e.y - y0
+
+    def _scroll_drag(self, e) -> None:
+        if self._overflow():
+            self._scroll_to((e.y - self._grab) / int(self.scroll.cget("height")))
 
     # -- tiles -------------------------------------------------------------------------------------
     def _picture(self, name: str, text: str) -> Image.Image:
