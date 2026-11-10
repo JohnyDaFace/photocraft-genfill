@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import ctypes
 import math
+import os
+import socket
 import sys
+import threading
 import tkinter as tk
 import xml.etree.ElementTree as ET
 from functools import lru_cache
@@ -490,6 +493,43 @@ class Tooltip:
 # items: ("item", label, callback[, icon[, right_text]]), ("sub", label, items), ("sep",),
 #        ("header", text), ("info", text[, color]), ("check", label, callback, checked)
 
+def _hyprland_event_socket() -> Path | None:
+    """Hyprland's compositor events, available to XWayland apps in a Wayland session."""
+    if not sys.platform.startswith("linux"):
+        return None
+    signature = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "")
+    if not signature or "/" in signature or "\\" in signature:
+        return None
+    for base in (os.environ.get("XDG_RUNTIME_DIR"), "/tmp"):
+        if base:
+            path = Path(base) / "hypr" / signature / ".socket2.sock"
+            if path.is_socket():
+                return path
+    return None
+
+
+def _listen_hyprland_focus(conn: socket.socket, changed: threading.Event, stop: threading.Event) -> None:
+    """Watch compositor focus changes without asking Tk's stale XWayland focus state."""
+    with conn:
+        conn.settimeout(0.25)
+        pending = b""
+        while not stop.is_set():
+            try:
+                chunk = conn.recv(4096)
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            if not chunk:
+                return
+            pending += chunk
+            while b"\n" in pending:
+                line, pending = pending.split(b"\n", 1)
+                if line.startswith(b"activewindowv2>>"):
+                    changed.set()
+                    return
+
+
 class PopupMenu(tk.Toplevel):
     """A themed menu that opens next to a widget. Closes on a choice, Escape, a click elsewhere or
     when the app loses focus."""
@@ -499,6 +539,8 @@ class PopupMenu(tk.Toplevel):
         super().__init__(parent_menu or anchor)
         self.p, self.font, self.parent_menu, self.child = p, font, parent_menu, None
         self.anchor = anchor
+        self._external_focus = threading.Event()
+        self._focus_stop = threading.Event()
         self.withdraw()  # XWayland window managers may ignore a move after mapping
         self.overrideredirect(True)
         self.attributes("-topmost", True)
@@ -530,6 +572,17 @@ class PopupMenu(tk.Toplevel):
                 self.grab_set()
             except tk.TclError:
                 pass
+            path = _hyprland_event_socket()
+            if path is not None:
+                conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                try:
+                    conn.settimeout(0.2)
+                    conn.connect(str(path))
+                except OSError:
+                    conn.close()
+                else:
+                    threading.Thread(target=_listen_hyprland_focus,
+                                     args=(conn, self._external_focus, self._focus_stop), daemon=True).start()
             self.after(250, self._watch_focus)
 
     def _row(self, body, text, right="", icon=None, color=None, active=True):
@@ -681,6 +734,9 @@ class PopupMenu(tk.Toplevel):
     def _watch_focus(self):
         if not self.winfo_exists():
             return
+        if self._external_focus.is_set():
+            self.close_all()
+            return
         try:
             has_focus = self.focus_displayof() is not None
         except (KeyError, tk.TclError):
@@ -692,6 +748,7 @@ class PopupMenu(tk.Toplevel):
 
     def close_all(self):
         root = self._root_menu()
+        root._focus_stop.set()
         try:
             root.grab_release()
         except tk.TclError:
