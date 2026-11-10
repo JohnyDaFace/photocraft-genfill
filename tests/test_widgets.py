@@ -257,3 +257,58 @@ def test_anchor_click_closes_menu_without_reopening_it(root, monkeypatch):
     assert not opened and anchor._skip_open is False
     app.App._menu(fake_app, anchor, [("item", "One", None)])
     assert len(opened) == 1
+
+
+def test_popup_closes_on_compositor_focus_event_even_if_tk_focus_is_stale(root, monkeypatch):
+    anchor = tk.Frame(root)
+    m = PopupMenu(anchor, [("item", "One", None)], theme.PALETTES["Pro"], theme.fonts(root)["body"])
+    monkeypatch.setattr(m, "focus_displayof", lambda: anchor)
+    m._external_focus.set()
+    m._watch_focus()
+    assert not m.winfo_exists()
+
+
+def test_hyprland_focus_listener_ignores_other_events_and_marks_window_change():
+    import socket
+    import threading
+    from genfill.widgets import _listen_hyprland_focus
+
+    reader, writer = socket.socketpair()
+    changed, stop = threading.Event(), threading.Event()
+    thread = threading.Thread(target=_listen_hyprland_focus, args=(reader, changed, stop), daemon=True)
+    thread.start()
+    try:
+        writer.sendall(b"workspace>>2\n")
+        assert not changed.wait(0.05)
+        writer.sendall(b"activewindowv2>>0x1234\n")
+        assert changed.wait(1)
+    finally:
+        stop.set()
+        writer.close()
+        thread.join(1)
+
+
+def test_popup_observes_hyprland_focus_socket(root, tmp_path, monkeypatch):
+    import socket
+    from genfill import widgets
+
+    if not hasattr(socket, "AF_UNIX"):
+        pytest.skip("Unix-domain sockets are unavailable on this platform")
+    path = tmp_path / "hyprland.sock"
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(str(path))
+    server.listen(1)
+    monkeypatch.setattr(widgets, "_hyprland_event_socket", lambda: path)
+    anchor = tk.Frame(root)
+    m = PopupMenu(anchor, [("item", "One", None)], theme.PALETTES["Pro"], theme.fonts(root)["body"])
+    try:
+        peer, _ = server.accept()
+        with peer:
+            peer.sendall(b"activewindowv2>>0xabcd\n")
+            assert m._external_focus.wait(1)
+            m._watch_focus()
+            assert not m.winfo_exists()
+    finally:
+        if m.winfo_exists():
+            m.close_all()
+        server.close()
