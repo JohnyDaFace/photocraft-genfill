@@ -225,7 +225,11 @@ def test_tooltip_stays_on_monitor_left_of_primary(root):
     button = tk.Button(root, text="Help")
     button.pack()
     root.update()
-    assert button.winfo_rootx() < 0
+    if button.winfo_rootx() >= 0:
+        pytest.skip("The display has no monitor left of the primary, or constrains windows to the primary")
+    from genfill.widgets import monitor_area
+    if monitor_area(button)[0] >= 0:
+        pytest.skip("The button is outside any monitor left of the primary")
 
     tip = Tooltip(button, "Useful tip")
     tip._show()
