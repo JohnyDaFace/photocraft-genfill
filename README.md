@@ -122,9 +122,9 @@ The Style panel: click a thumbnail to turn it on, click it again to turn it off.
 
 ![The Style panel, Portrait tab](docs/showcase/style-panel.png)
 
-The menus: **Remove** with a thing typed, and **Fix** with *Blur & haze* open.
+The menus: **Remove** with a thing typed, and **Fix** showing its editing options.
 
-![The Remove menu, and the Fix menu with Blur & haze open](docs/showcase/bar-menus.png)
+![The Remove and Fix menus on the compact bar](docs/showcase/bar-menus.png)
 
 Not every try is a hit: that's why Generate makes several versions to pick from.
 
