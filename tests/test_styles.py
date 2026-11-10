@@ -4,6 +4,7 @@ import threading
 from dataclasses import replace
 
 import pytest
+from PIL import Image
 
 from genfill import styles
 from genfill.pipeline import UserFacingError, create, generate
@@ -44,6 +45,47 @@ def test_styled_adds_the_sentence():
     assert styles.styled("a fox", "") == "a fox" and styles.styled("", "Cinematic") == ""
     assert styles.styled("", "Cinematic", restyle=True) == text + " " + styles.KEEP
     assert styles.styled("a fox", "Gone") == "a fox"  # a style deleted from the file: nothing added
+
+
+def test_styled_create_with_reference_keeps_person_identity_after_look_and_angle():
+    prompt = "A woman in a blue jacket in a studio"
+    result = styles.styled(prompt, "Cinematic", angle="Full body", reference_image=1)
+    assert result.startswith(styles.angle_text("Full body") + " " + styles.text_for("Cinematic"))
+    assert result.endswith(styles.REFERENCE_PERSON.format(image=1))
+    assert result.index(prompt) < result.index(styles.REFERENCE_PERSON.format(image=1))
+    assert styles.styled(prompt, "Cinematic", angle="Full body") == (
+        styles.angle_text("Full body") + " " + styles.text_for("Cinematic") + " " + prompt)
+
+
+def test_flux3_cinematic_changes_visual_treatment_without_scene_directives():
+    prompt = "The woman from the reference standing by a car"
+    result = styles.styled(prompt, "Cinematic", angle="Eye level", reference_image=1, model_family="flux3")
+    assert "natural skin tones" in result
+    assert "film still" in result and "teal-blue" in result and "warm amber" in result
+    assert "anamorphic" not in result and "shallow depth of field" not in result
+    assert "pose and body proportions" in result
+    assert "camera angle" in result
+    assert prompt in result
+    assert styles.styled(prompt, "Cinematic", angle="Eye level", reference_image=1) != result
+
+
+def test_flux3_create_sends_restrained_cinematic_prompt(tmp_path):
+    s = replace(_settings(tmp_path), style="Cinematic", angle="Eye level")
+    s.switch_family("flux3")
+    comfy = FakeComfy()
+    create("1:1", "a woman standing beside a car", s, lambda _: None, lambda _: None,
+           threading.Event(), comfy=comfy, count=1, reference=Image.new("RGB", (512, 512)))
+    prompt = comfy.wfs[0]["text"]["inputs"]["text"]
+    assert styles.FLUX3_CINEMATIC in prompt
+    assert styles.FLUX3_REFERENCE_PERSON.format(image=1) in prompt
+    assert styles.text_for("Cinematic") not in prompt
+
+
+def test_create_with_reference_and_style_uses_identity_instruction(tmp_path):
+    s = replace(_settings(tmp_path), style="Cinematic", angle="Full body")
+    r = create("16:9", "a woman in a blue jacket", s, lambda _: None, lambda _: None,
+               threading.Event(), comfy=FakeComfy(), count=1, reference=Image.new("RGB", (64, 80)))
+    assert r.job.prompt.endswith(styles.REFERENCE_PERSON.format(image=1))
 
 
 def _on(tmp_path, name="Movie poster"):

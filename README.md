@@ -17,22 +17,22 @@ image model of your choice (FLUX.2 [klein] by default):
 
 The other tools sit in the bar's menus, grouped by what they do:
 
-- **Select ▾** only selects; nothing in the picture changes. With SAM 3 it finds things by name: type "dog" or
+- **Select** only selects; nothing in the picture changes. With SAM 3 it finds things by name: type "dog" or
   "boat" and it selects them, or pick Sky or People. **By distance** selects what's near (the foreground) or what's
   far (the background), with no words needed.
-- **Remove ▾** takes things out: what's selected, or (with nothing selected) what you typed, all people or all
+- **Remove** takes things out: what's selected, or (with nothing selected) what you typed, all people or all
   cars in one go, filling in what was behind them; **Remove background** (a layer mask, nothing deleted); and
   reflections on windows or glasses.
-- **Fix ▾** makes the picture better or changes its look, in one click (like Photoshop's Neural Filters):
+- **Fix** makes the picture better or changes its look, in one click (like Photoshop's Neural Filters):
   - **Enhance**: the same picture at the same size, crisper and better lit, as a layer you can fade or mask.
   - **Restore old photo**, **Colorize** black & white, **Harmonize** a pasted object into the scene.
   - **Faces**: every face restored up close, sharper but the same person; retouch, smile, younger or older; or
     **replace** a face with the person in another photo, keeping the expression and pose.
   - **Relight**, **Sky** replacement and **Blur & haze** (lens blur, haze in the distance, fog).
-- **Resize ▾**: **Expand** makes the canvas bigger (16:9, 4:5, 1:1… or a margin all round) and fills the new
+- **Resize**: **Expand** makes the canvas bigger (16:9, 4:5, 1:1… or a margin all round) and fills the new
   edges to match, like Photoshop's Generative Expand. **Upscale** (2× or 4×) redraws the whole image larger with
   new detail and opens it as a new document.
-- **Create ▾** makes something new:
+- **Create** makes something new:
   - **A new picture** from just the prompt (1:1, 4:5, 16:9…), opened as a new document. With no document open,
     the bar offers only this: pick the shape, type, click **Create**.
   - **From my sketch**: draw roughly on a new empty layer (a few coloured shapes and lines are enough), keep that
@@ -73,29 +73,29 @@ made with the same model, so no real photos are involved.
 
 ![Generative Fill: a rowing boat added to a lake](docs/showcase/fill.jpg)
 
-**Remove**: select the cone, type *traffic cone*, pick Remove ▾ › What's selected.
+**Remove**: select the cone, type *traffic cone*, pick Remove › What's selected.
 
 ![Remove: a traffic cone taken off a park path](docs/showcase/remove.jpg)
 
-**Expand**: nothing selected, Resize ▾ › 16:9. A portrait photo becomes a wide one.
+**Expand**: nothing selected, Resize › 16:9. A portrait photo becomes a wide one.
 
 ![Expand: a 4:5 photo widened to 16:9](docs/showcase/expand.jpg)
 
-**Fix ▾**: nothing selected, *Colorize black & white*, then *Sky › Golden sunset*.
+**Fix**: nothing selected, *Colorize black & white*, then *Sky › Golden sunset*.
 
 ![Colorize: an old black and white harbour photo in colour](docs/showcase/colorize.jpg)
 
 ![Sky replacement: a golden sunset over the lake, reflected in the water](docs/showcase/sky.jpg)
 
-**Select ▾**: type *sky* (left) or *boat* (right) and pick it under Select. The tint shows what got selected.
+**Select**: type *sky* (left) or *boat* (right) and pick it under Select. The tint shows what got selected.
 
 ![Select by name: the sky over the lake, and the boats in the harbour](docs/showcase/select.jpg)
 
-**Remove background**: Remove ▾ › Remove background keeps the main subject; or type *coffee cup* first to keep just that.
+**Remove background**: Remove › Remove background keeps the main subject; or type *coffee cup* first to keep just that.
 
 ![Remove background: a coffee cup cut out, the rest hidden by a layer mask](docs/showcase/remove-background.jpg)
 
-**Create ▾**: type *a red lighthouse on a rocky coast at dusk, waves, film photo*, Create ▾ › 3:2. Two of the
+**Create**: type *a red lighthouse on a rocky coast at dusk, waves, film photo*, Create › 3:2. Two of the
 results to choose from; the one you pick opens as a new document.
 
 ![Create: two lighthouse pictures made from the prompt alone](docs/showcase/create.jpg)
@@ -122,7 +122,7 @@ The Style panel: click a thumbnail to turn it on, click it again to turn it off.
 
 ![The Style panel, Portrait tab](docs/showcase/style-panel.png)
 
-The menus: **Remove ▾** with a thing typed, and **Fix ▾** with *Blur & haze* open.
+The menus: **Remove** with a thing typed, and **Fix** with *Blur & haze* open.
 
 ![The Remove menu, and the Fix menu with Blur & haze open](docs/showcase/bar-menus.png)
 
@@ -179,7 +179,7 @@ Your own LoRAs are kept per model: switching models switches them too.
 
 **Or your own ComfyUI workflow** for Generate and Create: see [Your own ComfyUI workflow](#your-own-comfyui-workflow).
 
-For **Select ▾** (optional; everything else works without it):
+For **Select** (optional; everything else works without it):
 
 | File | Put it in `ComfyUI/models/…` | Download |
 |---|---|---|
@@ -240,7 +240,10 @@ Download the file for your computer from the **Releases** page of this repositor
 2. Save your work, then quit PhotoCraft completely and start it again:
    - Windows: also quit the ArtCraft Launcher, including its tray icon.
    - Mac: PhotoCraft › Quit (Cmd+Q).
-   - Linux: log out and back in.
+   - Linux: log out and back in. The setup writes `~/.config/environment.d/photocraft-genfill.conf`, which
+     reaches PhotoCraft only when its launcher inherits the systemd user environment (for example via uwsm).
+     If your compositor starts outside the systemd user manager, set the variables from that file in the
+     environment that launches PhotoCraft, then restart PhotoCraft.
 3. Start ComfyUI. A message under the bar should say **Connected to PhotoCraft and ComfyUI**; the **⋯** menu
    shows both connections at any time.
 
@@ -248,21 +251,23 @@ Download the file for your computer from the **Releases** page of this repositor
 
 The app is a small floating bar, like Photoshop's contextual task bar. It follows what you do in PhotoCraft:
 
-- **Something selected:** prompt, **Remove ▾**, **Fix ▾** and **Generate** (fills the selection).
-- **Nothing selected:** prompt, **Select ▾**, **Remove ▾**, **Fix ▾**, **Resize ▾**, **Create ▾** and **Generate** (changes the whole
+- **Something selected:** prompt, **Remove**, **Fix** and **Generate** (fills the selection).
+- **Nothing selected:** prompt, **Select**, **Remove**, **Fix**, **Resize**, **Create** and **Generate** (changes the whole
   image, or only the thing the prompt names).
-- **No document open:** prompt, the shape of the new picture (for example **1:1 ▾**) and **Create** (or press
-  Enter).
+- **No document open:** prompt, the outlined **Size** button (hover to see the current shape) and the blue **Create** button
+  (or press Enter).
 
-The prompt is on top, the buttons under it. At the left of the buttons is what Generate will use: **Style** (shows the
+The prompt is on top, the buttons under it. The action buttons are compact icons; hover over one to see its name and purpose,
+then click to open its menu. At the left of the buttons is what Generate will use: **Style** (shows the
 look while one is on), **Reference** (a dot means a picture is set) and the **results count** (how many versions to
 choose from). At the right are the menus, by what you want to do: **Select** (find things), **Remove** (take
 things out), **Fix** (enhance, restore, faces, light, sky, blur), **Resize** (expand, upscale) and **Create** (new
-picture, from a sketch, photoshoot). Drag the dots left of the prompt to move the bar; it
+picture, from a sketch, photoshoot). Drag the three dots left of the prompt to move the bar; it
 remembers where you put it. Messages appear in a small pill under the bar (click it to hide it). While it works,
 a thin line along the bottom shows progress and **Generate** turns into **Cancel** (or press Esc). The **⋯** menu
 has the connections, Settings, the PhotoCraft connection, the version, Quit and, at the bottom, a Ko-fi button
-if you'd like to support the project.
+if you'd like to support the project. On Windows, click **−** at the top of the right control strip to minimize
+the bar to the taskbar; **⋯** sits below it.
 
 **Generate (fill a selection)**
 1. In PhotoCraft: select what to fill: the empty area after Image › Canvas Size, or something to replace or
@@ -276,9 +281,9 @@ if you'd like to support the project.
 The prompt box remembers your last 15 prompts: click the clock icon inside it to pick one again.
 
 **Remove**: select the object (generously, including its shadow), optionally type what it is ("basket",
-"the person on the left"), and pick **Remove ▾ › What's selected**. Naming it helps when the selection holds more than one thing.
+"the person on the left"), and pick **Remove › What's selected**. Naming it helps when the selection holds more than one thing.
 
-**Reference picture**: click **Reference** and pick an image file, then mention it as
+**Reference picture**: click **Reference** and pick an image file. When editing an open picture, it is
 "image 2" in the prompt: "the logo from image 2 as a poster on the wall", "a chair like the one in image 2",
 "in the style of image 2" (with nothing selected, that restyles the whole picture). Click it again to choose another or stop using it. Remove
 ignores the reference. Like any fill, not every try picks it up, so ask for 3 results.
@@ -341,7 +346,7 @@ sentence or two describing the look, use a built-in style's name to change its w
 new or changed style gets its thumbnail made the next time the panel opens (ComfyUI must be running).
 
 **One-click edits** (Restore old photo, Colorize, Harmonize, Relight, Sky, Blur & haze and the portrait ones
-under **Faces**, all in **Fix ▾**; reflections under **Remove ▾**): clicking one runs it straight away
+under **Faces**, all in **Fix**; reflections under **Remove**): clicking one runs it straight away
 (what's typed in the prompt box is left alone). With nothing selected they work on the whole image; with a selection,
 only there.
 
@@ -350,7 +355,7 @@ only there.
 | Harmonize | Select an object you pasted in: its light, colour and shadows are matched to the photo |
 | Colorize black & white, Restore old photo | Old family photos |
 | Sky › golden sunset / clear blue / dramatic storm | Replaces the sky and adjusts the light to match |
-| Remove ▾ › Reflections › on windows / on glasses | Shop windows, glass doors, display cases; eyes hidden behind shiny lenses. The colours stay the original's, and your LoRAs are not used for these. Busy reflections (people, shop fronts) may only fade: select just the glass so nothing else changes, and make a few results to pick from |
+| Remove › Reflections › on windows / on glasses | Shop windows, glass doors, display cases; eyes hidden behind shiny lenses. The colours stay the original's, and your LoRAs are not used for these. Busy reflections (people, shop fronts) may only fade: select just the glass so nothing else changes, and make a few results to pick from |
 | Blur & haze › Portrait lens (redrawn) | A portrait-lens look drawn by the model; the subject stays sharp. For a blur that leaves every pixel of the subject as it is, use *Lens blur* (see Depth below) |
 | Relight › golden hour / soft studio / night | Changes the lighting of the whole scene |
 | Faces › smile, look at the camera, retouch skin, younger, older | One person in the photo; select the face for the most control |
@@ -364,27 +369,30 @@ original, so you can lower its opacity, mask parts of it, or delete it. Edits ar
 scaled to your image's size, so on large photos they are softer than the original; use **Upscale** afterwards or
 mask the edit to where it matters. To change just one part, select it and use Generate with a prompt instead.
 
-**Expand**: with nothing selected, click **Resize ▾** and pick a shape (4:5, 1:1, 3:2, 16:9, 9:16, 2:3, or
+**Expand**: with nothing selected, click **Resize** and pick a shape (4:5, 1:1, 3:2, 16:9, 9:16, 2:3, or
 +10% / +25% on each side); it starts right away. It only ever grows the canvas, centred, and fills the new area to match (using the results count
 from Generate). Your document is enlarged only when you pick a result; the filled edges come in as a layer
 "Generative Expand" above your picture. To expand in one direction only, use Image › Canvas Size yourself,
 select the empty part and use Generate.
 
-**Upscale**: with nothing selected, click **Resize ▾** and pick 2× or 4× larger. The bigger image opens as a new document; the original is
+**Upscale**: with nothing selected, click **Resize** and pick 2× or 4× larger. The bigger image opens as a new document; the original is
 untouched. With SeedVR2 installed (see the model tables above) it restores real detail, fine lines and texture in
 one step, a few seconds per piece; it follows the picture, not the prompt. Without it, 4x-UltraSharp enlarges the
 picture and FLUX lightly redraws it; without either, the enlarging is a plain resize and the result stays soft.
 **⋯** shows which one Upscale uses. In the settings file, `seedvr_model` ("" turns SeedVR2 off), `seedvr_tile`
 (piece size, 2048; lower it if your GPU runs out of memory) and `upscale_model` change this.
 
-**Create ▾**: type a description of the picture you want ("a red lighthouse on a rocky coast at dusk, film
-photo"), click **Create ▾** and pick a shape (1:1, 4:5, 3:2, 16:9, 9:16, 2:3; the menu shows the size: at least Full
+**Create**: type a description of the picture you want ("a red lighthouse on a rocky coast at dusk, film
+photo"), click **Create** and pick a shape (1:1, 4:5, 3:2, 16:9, 9:16, 2:3; the menu shows the size: at least Full
 HD, so 16:9 is 1920×1080). You choose from the results as with Generate, *More like this* works too, and the one you pick opens
 as a new document; your open pictures are not touched. Describe it like a photo caption: subject, place, light,
-style ("film photo", "watercolour", "studio product shot"). With a **reference picture** set you can say
-"the chair from image 2 in a sunny loft". For print sizes, use **Upscale** on the result.
+style ("film photo", "watercolour", "studio product shot"). With one **reference picture**, Create uses it as
+image 1 automatically; the prompt does not need to name it. Choose an optional second picture from the
+**Reference** menu under **Additional Create reference · image 2**. When both are set, name **image 1** and **image 2** in the prompt to say what
+to take from each. FLUX.2 prepares each reference at 1 MP without changing its proportions; the selected output
+shape stays independent of both reference sizes. For print sizes, use **Upscale** on the result.
 
-**Photoshoot** (Create ▾ › Photoshoot): pick a shoot. **Product** has *Clean studio white*,
+**Photoshoot** (Create › Photoshoot): pick a shoot. **Product** has *Clean studio white*,
 *Skincare morning light*, *Luxury dark*, *Kitchen / lifestyle table* and *Outdoor summer*. **People** has *Studio
 headshots*, *Loft editorial* and *Street / city casual*. Then choose a photo of the product or the person (a phone
 photo is fine). GenFill cuts the subject out of the photo, makes a hero shot on the shoot's set, and then makes the
@@ -408,20 +416,20 @@ so on. Hide layers to see the others, or export each one.
 Tip: the product's label and the person's face are kept as closely as the model can, but small print on a label
 can still come out wrong in a shot or two. Reshoot those shots a few times and pick the version that reads right.
 
-**Enhance**: with nothing selected, **Fix ▾ › Enhance: crisper, better light**. It works in two passes:
+**Enhance**: with nothing selected, **Fix › Enhance: crisper, better light**. It works in two passes:
 first it finds better light and colour (only those are kept, so nothing in the picture changes), then it
 redraws the detail lightly while following your picture closely, at full size on big photos. People, objects
 and framing stay the same. It arrives as a layer "Enhance" above your picture: lower its opacity to taste.
 Typing in the prompt steers the light ("golden hour light", "moody, low key"). You get up to two results to
 choose from. How far the light and colour may change is `enhance_strength` in the settings file (0.35).
 
-**Select ▾** (needs the SAM 3 model above): with nothing selected, type what you're after in the prompt box
-("dog", "boat", "red car"), then open **Select ▾** or **Remove ▾**:
+**Select** (needs the SAM 3 model above): with nothing selected, type what you're after in the prompt box
+("dog", "boat", "red car"), then open **Select** or **Remove**:
 
-- **Select ▾ › “dog”** selects every dog it finds; **Sky** and **People** work without typing.
-- **Remove ▾ › “dog”**, **People** or **Cars** finds them, selects them and fills them away like Remove (you choose
+- **Select › “dog”** selects every dog it finds; **Sky** and **People** work without typing.
+- **Remove › “dog”**, **People** or **Cars** finds them, selects them and fills them away like Remove (you choose
   from the results as usual). Only the found shapes are redrawn, not a box around them.
-- **Remove ▾ › Remove background** puts a layer mask on the active layer that hides everything but the main subject
+- **Remove › Remove background** puts a layer mask on the active layer that hides everything but the main subject
   (found by BiRefNet: `birefnet.safetensors` in `ComfyUI/models/background_removal/`, from
   [Comfy-Org/BiRefNet](https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors),
   424 MB). Type something first (*dog*) and it becomes **Remove background, keep “dog”**, found by SAM 3. Nothing is
@@ -431,14 +439,14 @@ choose from. How far the light and colour may change is `enhance_strength` in th
 worked out from the picture's own pixels, so nothing is redrawn and faces, text and products stay exactly as they
 are). Each arrives as a new layer:
 
-- **Fix ▾ › Blur & haze › Lens blur: subject sharp** blurs the rest more the further it is from the main subject, like a
+- **Fix › Blur & haze › Lens blur: subject sharp** blurs the rest more the further it is from the main subject, like a
   wide-open lens. Type a thing first ("the dog") for **Lens blur: “the dog” sharp** to choose what stays in focus.
 - **Haze in the distance** and **Fog** fade the far parts into the air, thicker the further away.
-- **Select ▾ › By distance › Foreground** or **Background** selects what's near or what's far, no words needed.
+- **Select › By distance › Foreground** or **Background** selects what's near or what's far, no words needed.
 
 The first use loads the depth model (about a minute); after that it takes a few seconds.
 
-**Faces** (Fix ▾ › Faces):
+**Faces** (Fix › Faces):
 
 - **Sharpen faces** finds every face and restores each one up close at high resolution: sharper eyes, lashes, skin
   and hair, and still the same person. With SeedVR2 installed (the Upscale model, see the model tables) it uses
@@ -480,6 +488,9 @@ Qwen Image 2.1 Turbo or Krea 2 Turbo) and its three files (dropdowns list what y
 its own), steps (FLUX.2: 4 = fast, 8 = finer; FLUX 3: 15 = best, 8 = faster; Qwen and Krea: 8), upscale strength (0.2 subtle – 0.4 strong), PhotoCraft's control
 port, and:
 
+- **Model LoRAs**: choose a LoRA available in ComfyUI from the dropdown and set its strength (0–2) beside it.
+  **Add LoRA** adds another row; **None** turns model LoRAs off. Each built-in image model remembers its choices.
+  This does not change the separate Replace face LoRA or LoRAs inside your own workflow.
 - **Check compatibility**: after a PhotoCraft update, runs every PhotoCraft step this window uses and shows
   OK/FAIL for each. It may open and close a test tab; your open documents are not touched. The window also checks
   at startup and refuses to run a step PhotoCraft no longer supports rather than do something unexpected.
@@ -493,6 +504,10 @@ Have a workflow you like in ComfyUI (another model, your LoRAs, an upscaler at t
 it instead of its own. Under **⋯ › Settings… › Your workflow**, click **Choose…** and pick the same `.json` file
 you load in ComfyUI. Both kinds of save work: the normal save (Workflow › Save), subgraphs included, and
 Workflow › Export (API).
+
+After you save it, the workflow appears in the **Image model** dropdown as **Workflow: [name]**. You can save
+multiple workflows and switch between them there. **Clear** selects GenFill's built-in image model; saved workflows
+remain in the dropdown. GenFill uses the selected custom workflow for Generate and Create.
 
 GenFill then shows what it found in the workflow, and you can change any of it:
 
@@ -517,8 +532,8 @@ gets GenFill's working size. Steps, sampler, LoRAs and model files stay as they 
 - **Missing nodes**: GenFill tells you which ones when you pick the file. Install them as you would in ComfyUI
   (ComfyUI Manager › Install Missing Custom Nodes) and restart ComfyUI. Missing model files show up as ComfyUI's own
   message when you Generate.
-- GenFill keeps its own copy of the workflow with your settings. After changing the workflow in ComfyUI, pick it
-  again. **Clear** goes back to GenFill's own.
+- GenFill keeps its own copy of each workflow with your settings. After changing a workflow in ComfyUI, pick its
+  file again to update the saved copy.
 
 **Updates**: at startup the bar asks GitHub whether a newer version exists; if so, a blue dot appears on
 **⋯**, and the menu has a link to the download page. Turn this off under Settings › Updates. The **⋯** menu

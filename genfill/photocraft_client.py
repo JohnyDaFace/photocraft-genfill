@@ -64,6 +64,7 @@ class PhotoCraftClient:
         self.port, self.token_file, self.timeout = port, token_file, timeout
         self.exchange_dir, self.mode = exchange_dir, mode
         self._sock: socket.socket | None = None
+        self._file = None
         self._n = 0
 
     def __enter__(self) -> "PhotoCraftClient":
@@ -75,24 +76,36 @@ class PhotoCraftClient:
             self._sock = socket.create_connection(("127.0.0.1", self.port), timeout=5)
         except OSError as e:
             raise PhotoCraftError(NOT_CONNECTED.format(port=self.port)) from e
-        self._sock.settimeout(self.timeout)
-        self._file = self._sock.makefile("rw", encoding="utf-8", newline="\n")
-        self._request("auth", {"token": token}, rid="auth")
-        if self.mode is None:
-            try:
-                self._request("ui.inspect", {})
-                self.mode = "desktop"
-            except PhotoCraftError:
-                self.mode = "headless"
-        return self
+        try:
+            self._sock.settimeout(self.timeout)
+            self._file = self._sock.makefile("rw", encoding="utf-8", newline="\n")
+            self._request("auth", {"token": token}, rid="auth")
+            if self.mode is None:
+                try:
+                    self._request("ui.inspect", {})
+                    self.mode = "desktop"
+                except PhotoCraftError as e:
+                    message = str(e).lower()
+                    if not any(phrase in message for phrase in ("unknown method", "method not found",
+                                                               "method unsupported", "method not supported")):
+                        raise  # a dropped or busy desktop connection is not a headless engine
+                    self.mode = "headless"
+            return self
+        except Exception:
+            self.__exit__(None, None, None)
+            raise
 
     def __exit__(self, *exc) -> None:
         try:
-            if self._sock:
+            if self._file is not None:
                 self._file.close()
-                self._sock.close()
         finally:
-            self._sock = None
+            self._file = None
+            try:
+                if self._sock:
+                    self._sock.close()
+            finally:
+                self._sock = None
 
     def _request(self, method: str, params: dict | None, rid: Any = None) -> Any:
         if self._sock is None:

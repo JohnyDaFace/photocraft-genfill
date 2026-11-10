@@ -3,6 +3,8 @@ and the compatibility check. Slow calls run on threads; results come back throug
 from __future__ import annotations
 
 import threading
+import math
+import uuid
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -23,7 +25,11 @@ class SettingsDialog(tk.Toplevel):
         super().__init__(master)
         self.s, self.p, self.f, self.on_save = settings, palette, fonts, on_save
         self.work = Settings(**{**settings.__dict__, "models": dict(settings.models), "loras": list(settings.loras),
-                                "other_families": dict(settings.other_families)})  # family switches go here
+                                "other_families": dict(settings.other_families),
+                                "saved_workflows": [dict(w) for w in settings.saved_workflows]})
+        self.saved_workflows = self.work.saved_workflows
+        self.pending_workflows: dict[str, dict] = {}
+        self.active_workflow_id = settings.active_workflow_id
         self.title("Settings – Generative Fill for PhotoCraft")
         self.configure(bg=palette.chrome)
         self.attributes("-topmost", True)
@@ -59,6 +65,7 @@ class SettingsDialog(tk.Toplevel):
         self.family_var = tk.StringVar(value=family(settings.model_family).label)
         fam_cb = ttk.Combobox(fr, textvariable=self.family_var, style="PC.TCombobox", font=f["body"], state="readonly",
                               values=[fam.label for fam in FAMILIES.values()])
+        self.family_box = fam_cb
         fam_cb.grid(row=row, column=1, columnspan=2, sticky="ew", pady=px(4))
         fam_cb.bind("<<ComboboxSelected>>", lambda e: self._switch_family())
         row += 1
@@ -71,12 +78,36 @@ class SettingsDialog(tk.Toplevel):
             self.combos[slot] = cb
             row += 1
 
+        label("Model LoRAs", row)
+        self.lora_frame = tk.Frame(fr, bg=p.chrome)
+        self.lora_frame.grid(row=row, column=1, columnspan=2, sticky="ew")
+        self.lora_frame.columnconfigure(0, weight=1)
+        self.lora_choices = ["None"]
+        self.lora_names: list[tk.StringVar] = []
+        self.lora_strengths: list[tk.StringVar] = []
+        self.lora_boxes: list[ttk.Combobox] = []
+        self._lora_edited = False
+        self._show_loras()
+        row += 1
+        tk.Label(fr, text="Choose from ComfyUI; None turns these off. Your own workflow and Replace face keep theirs.",
+                 bg=p.chrome, fg=p.text_faint, font=f["small"], anchor="w").grid(
+            row=row, column=1, columnspan=2, sticky="w", pady=(0, px(4)))
+        row += 1
+
         # Your own workflow for Generate and Create (custom_workflow.py)
         label("Your workflow", row)
         own_row = tk.Frame(fr, bg=p.chrome)
         own_row.grid(row=row, column=1, columnspan=2, sticky="ew", pady=px(4))
         self.own_path = settings.custom_workflow
         self.own_wf = custom_workflow.load_saved(CONFIG_DIR) if settings.custom_workflow else None
+        if self.own_wf is None and self.active_workflow_id:
+            self.own_wf = custom_workflow.load_saved(CONFIG_DIR, self.active_workflow_id)
+        if self.own_wf is not None and not any(w["id"] == self.active_workflow_id for w in self.saved_workflows):
+            self.active_workflow_id = uuid.uuid4().hex  # migrate the older single-workflow setting
+            self.saved_workflows.append({"id": self.active_workflow_id, "name": Path(self.own_path).stem,
+                                         "source": self.own_path, "slots": dict(settings.custom_slots)})
+            self.pending_workflows[self.active_workflow_id] = self.own_wf
+        self._refresh_model_choices()
         self.own_name = tk.StringVar()
         tk.Label(own_row, textvariable=self.own_name, bg=p.chrome, fg=p.text, font=f["body"], anchor="w").pack(
             side="left", fill="x", expand=True)
@@ -149,26 +180,120 @@ class SettingsDialog(tk.Toplevel):
             try:
                 c = ComfyClient(url)
                 have = c.available_models()
+                try:
+                    loras = c.available_loras()
+                except ComfyError:
+                    loras = []
                 problems = c.check_setup({**{slot: self.vars[slot].get() for slot in MODEL_SLOTS},
                                           "family": self.work.model_family})
-                self.after(0, lambda: self._models_loaded(have, problems))
+                self.after(0, lambda: self._models_loaded(have, problems, loras))
             except ComfyError as e:
                 self.after(0, lambda: self.msg.set(str(e)))
         threading.Thread(target=work, daemon=True).start()
 
-    def _models_loaded(self, have: dict, problems: list[str]) -> None:
+    def _models_loaded(self, have: dict, problems: list[str], loras: list[str] = ()) -> None:
         for slot, cb in self.combos.items():
             cb.configure(values=have.get(slot, []))
+        self.lora_choices = ["None", *loras]
+        for name, cb in zip(self.lora_names, self.lora_boxes):
+            cb.configure(values=list(dict.fromkeys([*self.lora_choices, name.get()])))
         self.msg.set("\n".join(problems) if problems else "ComfyUI is ready: all three model files were found.")
 
     def _steps_text(self) -> str:
         return f"Steps ({family(self.work.model_family).steps_hint})"
 
+    def _show_loras(self) -> None:
+        """Show the selected model's LoRAs, or an empty picker when they are paused."""
+        rows = []
+        if self.work.use_loras:
+            for lora in self.work.loras:
+                rows.append((lora if isinstance(lora, str) else lora.get("name", ""),
+                             1.0 if isinstance(lora, str) else lora.get("strength", 1.0)))
+        self._render_loras(rows or [("None", 1.0)])
+        self._lora_edited = False
+
+    def _render_loras(self, rows) -> None:
+        for child in self.lora_frame.winfo_children():
+            child.destroy()
+        self.lora_names = []
+        self.lora_strengths = []
+        self.lora_boxes = []
+        for row, (name, strength) in enumerate(rows):
+            selected = tk.StringVar(value=name or "None")
+            selected.trace_add("write", lambda *_: setattr(self, "_lora_edited", True))
+            self.lora_names.append(selected)
+            cb = ttk.Combobox(self.lora_frame, textvariable=selected, style="PC.TCombobox",
+                              font=self.f["body"], state="readonly",
+                              values=list(dict.fromkeys([*self.lora_choices, selected.get()])))
+            cb.grid(row=row, column=0, sticky="ew", padx=(0, px(8)), pady=px(2))
+            self.lora_boxes.append(cb)
+            value = tk.StringVar(value=str(strength))
+            self.lora_strengths.append(value)
+            ttk.Entry(self.lora_frame, textvariable=value, style="PC.TEntry", font=self.f["body"],
+                      width=6).grid(row=row, column=1, sticky="e", pady=px(2))
+            theme.PillButton(self.lora_frame, "×", lambda i=row: self._remove_lora(i), self.p,
+                             self.f["small"], kind="quiet", height=24).grid(row=row, column=2, padx=(px(4), 0))
+        theme.PillButton(self.lora_frame, "Add LoRA", self._add_lora, self.p, self.f["small"],
+                         kind="quiet", height=24).grid(row=len(rows), column=0, sticky="w", pady=px(2))
+
+    def _add_lora(self) -> None:
+        rows = [(name.get(), strength.get()) for name, strength in zip(self.lora_names, self.lora_strengths)]
+        if len(rows) == 1 and rows[0][0] == "None":
+            return  # the first picker is already empty
+        self._render_loras([*rows, ("None", 1.0)])
+        self._lora_edited = True
+
+    def _remove_lora(self, index: int) -> None:
+        rows = [(name.get(), strength.get()) for name, strength in zip(self.lora_names, self.lora_strengths)]
+        rows.pop(index)
+        self._render_loras(rows or [("None", 1.0)])
+        self._lora_edited = True
+
+    def _read_loras(self) -> list[dict]:
+        """Read selected files and strengths, preserving a paused legacy configuration until edited."""
+        if not self._lora_edited and not self.work.use_loras:
+            return [{"name": lora, "strength": 1.0} if isinstance(lora, str) else dict(lora)
+                    for lora in self.work.loras]
+        result = []
+        for name_var, value in zip(self.lora_names, self.lora_strengths):
+            name = name_var.get().strip()
+            if name in ("", "None"):
+                continue
+            try:
+                strength = float(value.get())
+            except ValueError as e:
+                raise ValueError("LoRA strength must be a number from 0 to 2.") from e
+            if not math.isfinite(strength) or not 0 <= strength <= 2:
+                raise ValueError("LoRA strength must be a number from 0 to 2.")
+            result.append({"name": name, "strength": strength})
+        return result
+
     def _switch_family(self) -> None:
-        """Picked another image model: its files and steps come in (remembered, or its defaults)."""
-        name = next((k for k, fam in FAMILIES.items() if fam.label == self.family_var.get()), None)
-        if name is None or name == self.work.model_family:
+        """Choose a built-in image model or a saved custom workflow."""
+        workflow_id = self.workflow_labels.get(self.family_var.get())
+        if workflow_id:
+            self._remember_active_workflow()
+            self._activate_workflow(workflow_id)
             return
+        name = next((k for k, fam in FAMILIES.items() if fam.label == self.family_var.get()), None)
+        if name is None:
+            return
+        if name == self.work.model_family:
+            self._remember_active_workflow()
+            self.active_workflow_id, self.own_path, self.own_wf = "", "", None
+            self._show_workflow()
+            return
+        try:
+            self.work.loras = self._read_loras()
+            if self._lora_edited:
+                self.work.use_loras = bool(self.work.loras)
+        except ValueError as e:
+            self.msg.set(str(e))
+            self._refresh_model_choices()
+            return
+        self._remember_active_workflow()
+        self.active_workflow_id, self.own_path, self.own_wf = "", "", None
+        self._show_workflow()
         self.work.models = {slot: self.vars[slot].get().strip() for slot in MODEL_SLOTS}
         try:
             self.work.steps = max(1, min(50, int(self.vars["steps"].get())))
@@ -179,7 +304,35 @@ class SettingsDialog(tk.Toplevel):
             self.vars[slot].set(self.work.models.get(slot, ""))
         self.vars["steps"].set(str(self.work.steps))
         self.steps_label.configure(text=self._steps_text())
+        self._show_loras()
         self.load_models()
+
+    def _refresh_model_choices(self) -> None:
+        self.workflow_labels = {f"Workflow: {w['name']}": w["id"] for w in self.saved_workflows}
+        self.family_box.configure(values=[*[fam.label for fam in FAMILIES.values()], *self.workflow_labels])
+        selected = next((label for label, ident in self.workflow_labels.items()
+                         if ident == self.active_workflow_id), family(self.work.model_family).label)
+        self.family_var.set(selected)
+
+    def _remember_active_workflow(self) -> None:
+        if self.active_workflow_id and self.own_wf is not None:
+            entry = next((w for w in self.saved_workflows if w["id"] == self.active_workflow_id), None)
+            if entry is not None:
+                entry["slots"] = self._slots()
+
+    def _activate_workflow(self, workflow_id: str) -> None:
+        entry = next((w for w in self.saved_workflows if w["id"] == workflow_id), None)
+        if entry is None:
+            return
+        wf = self.pending_workflows.get(workflow_id) or custom_workflow.load_saved(CONFIG_DIR, workflow_id)
+        if wf is None:
+            self.msg.set(f"Saved workflow '{entry['name']}' is missing. Choose its file again.")
+            self._refresh_model_choices()
+            return
+        self.active_workflow_id = workflow_id
+        self.own_path, self.own_wf = entry["source"], wf
+        self._show_workflow(entry.get("slots"))
+        self._refresh_model_choices()
 
     def test_comfy(self) -> None:
         self.load_models()
@@ -233,8 +386,23 @@ class SettingsDialog(tk.Toplevel):
         threading.Thread(target=work, daemon=True).start()
 
     def _workflow_read(self, path: str, wf: dict, missing: list[str]) -> None:
+        self._remember_active_workflow()
+        entry = next((w for w in self.saved_workflows if w["source"] == path), None)
+        if entry is None:
+            names = {w["name"] for w in self.saved_workflows}
+            base = Path(path).stem
+            name = base
+            number = 2
+            while name in names:
+                name, number = f"{base} ({number})", number + 1
+            entry = {"id": uuid.uuid4().hex, "name": name, "source": path, "slots": {}}
+            self.saved_workflows.append(entry)
+        self.active_workflow_id = entry["id"]
+        self.pending_workflows[entry["id"]] = wf
         self.own_path, self.own_wf = path, wf
         self._show_workflow()
+        entry["slots"] = self._slots()
+        self._refresh_model_choices()
         notes = custom_workflow.problems(self._slots())
         if missing:
             notes.insert(0, "Your ComfyUI doesn't have these nodes: " + ", ".join(missing) + ". Install them "
@@ -243,8 +411,11 @@ class SettingsDialog(tk.Toplevel):
                      "Workflow read. Check what GenFill found for each part, change any that's wrong, then Save.")
 
     def clear_workflow(self) -> None:
+        self._remember_active_workflow()
+        self.active_workflow_id = ""
         self.own_path, self.own_wf = "", None
         self._show_workflow()
+        self._refresh_model_choices()
         self.msg.set("Generate and Create will use GenFill's own workflow again (after Save).")
 
     # -- PhotoCraft ------------------------------------------------------------------------------
@@ -284,11 +455,17 @@ class SettingsDialog(tk.Toplevel):
             s.port = max(1, min(65535, int(self.vars["port"].get())))
             s.photocraft_cli = self.vars["photocraft_cli"].get().strip()
             s.check_updates = bool(self.check_updates.get())
+            s.loras = self._read_loras()
+            s.use_loras = bool(s.loras) if self._lora_edited else self.work.use_loras
             s.custom_workflow = self.own_path if self.own_wf is not None else ""
             s.custom_slots = self._slots() if self.own_wf is not None else {}
+            self._remember_active_workflow()
+            s.active_workflow_id = self.active_workflow_id if self.own_wf is not None else ""
+            s.saved_workflows = [dict(w) for w in self.saved_workflows]
             return s
-        except ValueError:
-            self.msg.set("Steps and port must be whole numbers, strength a number like 0.3.")
+        except ValueError as e:
+            self.msg.set(str(e) if str(e).startswith("LoRA strength") else
+                         "Steps and port must be whole numbers, strength a number like 0.3.")
             return None
 
     def save(self) -> None:
@@ -301,6 +478,8 @@ class SettingsDialog(tk.Toplevel):
                              "or clear the workflow.")
                 return
             custom_workflow.save(self.own_wf, CONFIG_DIR)
+        for workflow_id, wf in self.pending_workflows.items():
+            custom_workflow.save(wf, CONFIG_DIR, workflow_id)
         s.save()
         self.on_save(s)
         self.destroy()

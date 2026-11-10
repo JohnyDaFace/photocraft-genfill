@@ -214,3 +214,24 @@ def test_settings_remember_the_workflow(tmp_path):
     raw["custom_slots"] = "junk"
     (tmp_path / "s.json").write_text(json.dumps(raw))
     assert Settings.load(tmp_path / "s.json").custom_slots == {}
+
+
+def test_saved_workflows_have_separate_copies_and_settings_entries(tmp_path):
+    first = cw.to_api(text_to_image(), INFO)
+    second = json.loads(json.dumps(first))
+    second["2"]["inputs"]["text"] = "a river"
+    cw.save(first, tmp_path, "first")
+    cw.save(second, tmp_path, "second")
+    assert cw.load_saved(tmp_path, "first") == first
+    assert cw.load_saved(tmp_path, "second") == second
+    assert cw.load_saved(tmp_path) is None  # the active workflow copy is separate
+
+    settings_path = tmp_path / "settings.json"
+    s = Settings(saved_workflows=[
+        {"id": "first", "name": "Portrait", "source": "C:/portrait.json", "slots": {"result": "8"}},
+        {"id": "second", "name": "Landscape", "source": "C:/landscape.json", "slots": {"result": "8"}},
+    ], active_workflow_id="second")
+    s.save(settings_path)
+    loaded = Settings.load(settings_path)
+    assert loaded.active_workflow_id == "second"
+    assert [entry["name"] for entry in loaded.saved_workflows] == ["Portrait", "Landscape"]

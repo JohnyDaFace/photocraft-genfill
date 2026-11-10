@@ -1,8 +1,12 @@
 """The bar follows PhotoCraft: shown when it opens, hidden when it closes; started with Windows hidden."""
 from types import SimpleNamespace
+import queue
+
+import pytest
 
 from genfill import autostart
 from genfill.app import App
+from genfill.photocraft_client import PhotoCraftError
 from genfill.settings import Settings
 
 
@@ -54,3 +58,54 @@ def test_startup_shortcut_starts_the_bar_hidden():
     assert args.endswith(autostart.BACKGROUND)
     assert program.lower().endswith((".exe", "python", "pythonw"))
     assert autostart.shortcut_path().name == autostart.NAME
+
+
+def test_watcher_connection_events_update_status():
+    events = queue.Queue()
+    calls = []
+    bar = SimpleNamespace(events=events, conn={"PhotoCraft": (True, "connected")},
+                          root=SimpleNamespace(after=lambda *args: None),
+                          follow_photocraft=lambda running: calls.append(running), poll=lambda: None)
+    events.put(("photocraft_connection", (False, "reconnecting")))
+    events.put(("photocraft", False))
+    App.poll(bar)
+    assert bar.conn["PhotoCraft"] == (False, "reconnecting")
+    events.put(("photocraft_connection", (True, "connected")))
+    events.put(("photocraft", True))
+    App.poll(bar)
+    assert bar.conn["PhotoCraft"] == (True, "connected")
+    assert calls == [False, True]
+
+
+def test_watcher_reconnects_on_document_error_other_than_no_document(monkeypatch):
+    from genfill import app
+
+    class Client:
+        closed = False
+        mode = "desktop"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.closed = True
+
+        def _inspect(self):
+            raise PhotoCraftError("PhotoCraft: temporary request failure")
+
+    client = Client()
+    monkeypatch.setattr(app, "PhotoCraftClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(app.setup_env, "status", lambda port: {"ready": True})
+    ticks = iter(range(3))
+
+    def sleep(seconds):
+        try:
+            next(ticks)
+        except StopIteration:
+            raise RuntimeError("stop watcher")
+
+    monkeypatch.setattr(app.time, "sleep", sleep)
+    bar = SimpleNamespace(busy=False, settings=Settings(), events=queue.Queue())
+    with pytest.raises(RuntimeError, match="stop watcher"):
+        App.watch(bar)
+    assert client.closed

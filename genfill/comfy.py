@@ -30,7 +30,7 @@ MODEL_SLOTS = {  # slot: (loader node, its file field, ComfyUI/models folder); t
     "clip": ("CLIPLoader", "clip_name", "text_encoders"),
     "vae": ("VAELoader", "vae_name", "vae"),
 }
-REQUIRED_NODES = ["Flux2Scheduler", "ReferenceLatent", "SetLatentNoiseMask", "SplitSigmasDenoise", "CFGGuider",
+REQUIRED_NODES = ["Flux2Scheduler", "ReferenceLatent", "ImageScaleToTotalPixels", "SetLatentNoiseMask", "SplitSigmasDenoise", "CFGGuider",
                   "SamplerCustomAdvanced", "ConditioningZeroOut", "LoadImageMask"]
 
 
@@ -115,16 +115,30 @@ def _extras(wf: dict, names) -> list[dict]:
     return [{"pixels": _load(wf, f"extra{i}_image", n)} for i, n in enumerate(names, 1)]
 
 
+def _negative_refs(wf: dict, models: dict, refs: list[dict]) -> list | None:
+    """FLUX.2 edit template: keep the images in both guider paths, zeroing only the negative text."""
+    if (models.get("family") or "flux2") != "flux2" or not refs:
+        return None
+    wf["neg"] = {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["text", 0]}}
+    conditioning = ["neg", 0]
+    for i, ref in enumerate(refs, 1):
+        latent = ref.get("latent") or [f"ref{i}_encode", 0]
+        wf[f"neg_ref{i}"] = {"class_type": "ReferenceLatent",
+                              "inputs": {"conditioning": conditioning, "latent": latent}}
+        conditioning = [f"neg_ref{i}", 0]
+    return conditioning
+
+
 def _sampler(models: dict) -> str:
     return family(models.get("family")).sampler
 
 
 def _sampling(latent: list, positive: list, seed: int, sigmas: list, out_prefix: str,
-              model: list = ("unet", 0), sampler: str = "euler") -> dict:
+              model: list = ("unet", 0), sampler: str = "euler", negative: list | None = None) -> dict:
     return {
-        "neg": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": positive}},
+        **({} if negative else {"neg": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": positive}}}),
         "guider": {"class_type": "CFGGuider",
-                   "inputs": {"model": list(model), "positive": positive, "negative": ["neg", 0], "cfg": 1.0}},
+                   "inputs": {"model": list(model), "positive": positive, "negative": negative or ["neg", 0], "cfg": 1.0}},
         "sampler": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": sampler}},
         "noise": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
         "sample": {"class_type": "SamplerCustomAdvanced",
@@ -159,8 +173,10 @@ def build_fill_workflow(image_name: str, mask_name: str, prompt: str, seed: int,
         "sigmas": _schedule(wf, models, steps, width, height),
     })
     first = {"pixels": _load(wf, "ref_image", ref_name)} if ref_name else {"pixels": image, "latent": ["encode", 0]}
-    conditioning = _condition(wf, models, prompt or DEFAULT_PROMPT, [first] + _extras(wf, extra_refs))
-    wf.update(_sampling(["masked", 0], conditioning, seed, _sigmas(wf, denoise), "genfill", _model_ref(wf), _sampler(models)))
+    refs = [first] + _extras(wf, extra_refs)
+    conditioning = _condition(wf, models, prompt or DEFAULT_PROMPT, refs)
+    negative = _negative_refs(wf, models, refs)
+    wf.update(_sampling(["masked", 0], conditioning, seed, _sigmas(wf, denoise), "genfill", _model_ref(wf), _sampler(models), negative))
     return _finish(wf)
 
 
@@ -182,13 +198,15 @@ def build_edit_workflow(image_name: str, prompt: str, seed: int, steps: int,
     refs = ([{"pixels": image, "latent": ["encode", 0]}] if self_reference else []) + _extras(wf, extra_refs)
     if fam.encoder == "text":
         denoise = min(denoise, fam.redraw)
-    wf.update(_sampling(["encode", 0], _condition(wf, models, prompt, refs), seed, _sigmas(wf, denoise),
-                        "genfill_edit", _model_ref(wf), _sampler(models)))
+    conditioning = _condition(wf, models, prompt, refs)
+    negative = _negative_refs(wf, models, refs)
+    wf.update(_sampling(["encode", 0], conditioning, seed, _sigmas(wf, denoise),
+                        "genfill_edit", _model_ref(wf), _sampler(models), negative))
     return _finish(wf)
 
 
 def build_create_workflow(prompt: str, seed: int, steps: int, width: int, height: int, models: dict,
-                          extra_refs: list[str] = ()) -> dict:
+                          extra_refs: list[str] = (), scale_references: bool = False) -> dict:
     """A new picture from the prompt alone (text to image); `extra_refs` are pictures it may take an
     object or a style from (the first one is "image 1" here)."""
     fam = family(models.get("family"))
@@ -198,8 +216,18 @@ def build_create_workflow(prompt: str, seed: int, steps: int, width: int, height
                    "inputs": {"width": width, "height": height, "batch_size": 1}},
         "sigmas": _schedule(wf, models, steps, width, height),
     })
-    conditioning = _condition(wf, models, prompt, _extras(wf, extra_refs))
-    wf.update(_sampling(["latent", 0], conditioning, seed, ["sigmas", 0], "genfill_create", _model_ref(wf), _sampler(models)))
+    refs = _extras(wf, extra_refs)
+    if scale_references and (models.get("family") or "flux2") == "flux2":
+        method = "nearest-exact" if len(refs) == 1 else "lanczos"
+        for i, ref in enumerate(refs, 1):
+            key = f"ref{i}_scale"
+            wf[key] = {"class_type": "ImageScaleToTotalPixels",
+                       "inputs": {"upscale_method": method, "megapixels": 1.0, "resolution_steps": 1,
+                                  "image": ref["pixels"]}}
+            ref["pixels"] = [key, 0]
+    conditioning = _condition(wf, models, prompt, refs)
+    negative = _negative_refs(wf, models, refs)
+    wf.update(_sampling(["latent", 0], conditioning, seed, ["sigmas", 0], "genfill_create", _model_ref(wf), _sampler(models), negative))
     return _finish(wf)
 
 
@@ -361,6 +389,10 @@ class ComfyClient:
             choices = spec[0] if spec and isinstance(spec[0], list) else (spec[1] or {}).get("options", []) if len(spec) > 1 else []
             out[slot] = list(choices)
         return out
+
+    def available_loras(self) -> list[str]:
+        """LoRA files ComfyUI offers for its model-only loader."""
+        return list(self._choices("LoraLoaderModelOnly", "lora_name"))
 
     def check_setup(self, models: dict) -> list[str]:
         """Plain-language problems that would stop Generate/Upscale (empty = ready)."""

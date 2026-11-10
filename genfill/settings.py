@@ -66,6 +66,7 @@ class Settings:
     recent_prompts: list = field(default_factory=list)  # newest first, shown in the prompt box
     expand_choice: str = "16:9"  # last shape picked in Expand
     create_choice: str = "1:1"  # last shape picked in Create
+    create_second_reference: str = ""  # optional image 2 for a two-image FLUX.2 Create
     angle: str = ""  # camera angle that's on (styles.ANGLES): added before the style, until turned off
     style: str = ""  # style that's on (styles.py): added to Create and whole-image edit prompts until turned off
     check_updates: bool = True  # ask GitHub once at startup whether a newer version exists
@@ -89,14 +90,17 @@ class Settings:
     model_family: str = DEFAULT_FAMILY  # families.py: which image model draws (FLUX.2 Klein, FLUX 3 Klein…)
     models: dict = field(default_factory=lambda: dict(DEFAULT_MODELS))  # its files
     loras: list = field(default_factory=list)  # optional, settings file only: file names or {"name", "strength"}
+    use_loras: bool = True  # switch the configured model LoRAs off without forgetting them
     other_families: dict = field(default_factory=dict)  # the files, steps and LoRAs of the families not in use
     custom_workflow: str = ""  # your own ComfyUI workflow for Generate and Create: the file it came from ("" = off)
     custom_slots: dict = field(default_factory=dict)  # which of its nodes take the picture, prompt, result…
+    saved_workflows: list = field(default_factory=list)  # named workflow choices kept beside the built-in models
+    active_workflow_id: str = ""  # selected saved workflow; legacy custom_workflow can have no id
 
     @property
     def workflow_models(self) -> dict:
         """The model files plus the LoRAs and the family, as the workflow builders take them."""
-        return {**self.models, "loras": self.loras if isinstance(self.loras, list) else [],
+        return {**self.models, "loras": self.loras if self.use_loras and isinstance(self.loras, list) else [],
                 "family": self.model_family}
 
     def switch_family(self, name: str) -> None:
@@ -146,6 +150,13 @@ class Settings:
             s.other_families = {}
         if not isinstance(s.custom_slots, dict):
             s.custom_slots = {}
+        if not isinstance(s.saved_workflows, list):
+            s.saved_workflows = []
+        s.saved_workflows = [w for w in s.saved_workflows if isinstance(w, dict)
+                             and isinstance(w.get("id"), str) and isinstance(w.get("name"), str)
+                             and isinstance(w.get("source"), str) and isinstance(w.get("slots"), dict)]
+        if not isinstance(s.active_workflow_id, str):
+            s.active_workflow_id = ""
         s.recent_prompts = [str(x) for x in s.recent_prompts][:MAX_RECENT] if isinstance(s.recent_prompts, list) else []
         return s
 

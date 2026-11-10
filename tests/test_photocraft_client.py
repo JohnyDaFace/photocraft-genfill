@@ -121,6 +121,37 @@ def test_missing_token_file_mentions_setup(tmp_path):
         PhotoCraftClient(1, tmp_path / "nope.token").__enter__()
 
 
+def test_lost_desktop_probe_closes_socket_instead_of_becoming_headless(token_file, monkeypatch):
+    from genfill import photocraft_client
+
+    class Connection:
+        closed = False
+        file_closed = False
+
+        def settimeout(self, value):
+            pass
+
+        def makefile(self, *args, **kwargs):
+            return self
+
+        def close(self):
+            self.closed = True
+            self.file_closed = True
+
+    conn = Connection()
+    monkeypatch.setattr(photocraft_client.socket, "create_connection", lambda *args, **kwargs: conn)
+
+    def request(self, method, params, rid=None):
+        if method == "ui.inspect":
+            raise PhotoCraftError("Lost the connection to PhotoCraft (timed out).")
+        return None
+
+    monkeypatch.setattr(PhotoCraftClient, "_request", request)
+    with pytest.raises(PhotoCraftError, match="Lost the connection"):
+        PhotoCraftClient(7878, token_file).__enter__()
+    assert conn.closed and conn.file_closed
+
+
 class FakeDesktop:
     """Stateful stand-in for the desktop app: tracks the active document across open/close."""
 

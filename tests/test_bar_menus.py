@@ -11,7 +11,9 @@ def _bar(tmp_path, monkeypatch, typed="", reference=None, mode="image"):
     bar = SimpleNamespace(settings=Settings(), reference=reference, mode=mode, started=[], menus=[],
                           prompt=SimpleNamespace(get=lambda: typed), sel_btn=1, fix_btn=2, size_btn=3, create_btn=4, rm_btn=5,
                           _edit_shoots=print, _pick_shoot=print, _set_shoot_count=print, _set_create_choice=print,
-                          _replace_face_with_photo=print, use_preset=print)
+                          _replace_face_with_photo=print, use_preset=print,
+                          choose_create_second=print, clear_create_second=print,
+                          choose_reference=print, clear_reference=print, ref_btn=6)
     bar.start = lambda job, **kw: bar.started.append((job, kw))
     bar._menu = lambda anchor, items, right=False: bar.menus.append((anchor, items))
     for name in ("_typed", "preset_items", "shoot_items"):
@@ -88,10 +90,30 @@ def test_create_holds_sketch_and_photoshoot_and_photoshoot_works_with_nothing_op
     App.create_menu(bar)
     labels = _labels(bar.menus[0][1])
     assert "From my sketch (the active layer)" in labels and "Photoshoot" in labels
+    assert "Choose image 2…" not in labels
     empty = _bar(tmp_path, monkeypatch, mode="empty")
     App.create_menu(empty)
     labels = _labels(empty.menus[0][1])
     assert "From my sketch (the active layer)" not in labels and "Photoshoot" in labels
+
+
+def test_reference_menu_holds_both_create_images(tmp_path, monkeypatch):
+    bar = _bar(tmp_path, monkeypatch, reference="C:/photos/main.jpg")
+    App.reference_menu(bar)
+    anchor, items = bar.menus[0]
+    labels = _labels(items)
+    assert anchor == 6
+    assert "Main reference" in labels
+    assert "Additional Create reference · image 2" in labels
+    assert "Choose image 2…" in labels
+    assert "Clear image 2" not in labels
+    assert any(i[0] == "info" and "Create: image 1" in i[1] for i in items)
+
+    bar.settings.create_second_reference = "C:/photos/extra.jpg"
+    App.reference_menu(bar)
+    items = bar.menus[-1][1]
+    assert "Clear image 2" in _labels(items)
+    assert any(i[0] == "info" and 'name both "image 1" and "image 2"' in i[1] for i in items)
 
 
 def test_fix_blur_focuses_on_the_typed_thing_only_when_picked(tmp_path, monkeypatch):

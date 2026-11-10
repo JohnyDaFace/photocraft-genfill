@@ -26,6 +26,8 @@ def main() -> None:
             "--add-data", f"{ROOT / 'assets' / 'icons'}{';' if sys.platform == 'win32' else ':'}assets/icons"]
     if sys.platform != "darwin":
         args.append("--onefile")  # a .app bundle is already a single thing to download on macOS
+    if sys.platform.startswith("linux"):
+        args += ["--hidden-import", "PIL._tkinter_finder"]  # Pillow loads this dynamically for ImageTk
     args.append(str(ROOT / "GenFill.pyw"))
     subprocess.run(args, check=True, cwd=ROOT)
     print("built:", *sorted(p.name for p in (ROOT / "dist").iterdir()))

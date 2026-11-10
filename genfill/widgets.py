@@ -51,6 +51,7 @@ ICONS: dict[str, list[tuple]] = {
     "upscale": [("circle", (10.5, 10.5, 6.2)), ("line", [(15.2, 15.2), (20, 20)]),
                 ("line", [(10.5, 8), (10.5, 13)]), ("line", [(8, 10.5), (13, 10.5)])],
     "more": [("dot", (5, 12, 1.5)), ("dot", (12, 12, 1.5)), ("dot", (19, 12, 1.5))],
+    "minimize": [("line", [(5, 17), (19, 17)])],
     "chev": [("line", [(7, 10), (12, 15), (17, 10)])],
     "x": [("line", [(6.5, 6.5), (17.5, 17.5)]), ("line", [(17.5, 6.5), (6.5, 17.5)])],
     "stack": [("rrect", (8, 8, 20, 20, 2)), ("line", [(4.5, 15.5), (4.5, 6.5), (6.5, 4.5), (15.5, 4.5)])],
@@ -91,6 +92,97 @@ LUCIDE = {  # our icon name -> its Lucide file in assets/icons (drawn ones below
     "target": "lasso-select", "create": "image-plus", "palette": "palette", "folder": "folder-open",
     "coffee": "coffee", "wand": "wand-sparkles", "swap": "arrow-left-right", "camera": "camera",
 }
+
+SOLID_BAR_ICONS = {"target", "eraser", "wand", "expand", "create", "swap", "camera",
+                   "palette", "image", "stack", "spark"}
+
+
+@lru_cache(maxsize=256)
+def solid_bar_icon_image(name: str, size: int, color: str) -> Image.Image:
+    """Filled 24-unit glyphs for the floating bar, drawn at 4× for crisp small icons."""
+    if name not in SOLID_BAR_ICONS:
+        raise ValueError(f"No filled bar icon: {name}")
+    scale = size * SS / 24
+    mask = Image.new("L", (size * SS, size * SS), 0)
+    d = ImageDraw.Draw(mask)
+
+    def box(coords):
+        return tuple(round(v * scale) for v in coords)
+
+    def polygon(points, fill=255):
+        d.polygon([(round(x * scale), round(y * scale)) for x, y in points], fill=fill)
+
+    def rect(coords, fill=255, radius=0):
+        d.rounded_rectangle(box(coords), radius=round(radius * scale), fill=fill)
+
+    def ellipse(coords, fill=255):
+        d.ellipse(box(coords), fill=fill)
+
+    if name == "target":
+        ellipse((3, 3, 21, 21))
+        ellipse((7, 7, 17, 17), 0)
+        ellipse((10, 10, 14, 14))
+        rect((11, 1, 13, 6))
+        rect((11, 18, 13, 23))
+        rect((1, 11, 6, 13))
+        rect((18, 11, 23, 13))
+    elif name == "eraser":
+        polygon([(3, 14), (12, 4), (21, 13), (14, 20), (9, 20)])
+        polygon([(4, 14), (9, 19), (13, 19), (7, 12)], 0)
+        rect((14, 20, 22, 22), radius=1)
+    elif name == "wand":
+        polygon([(3, 18), (13, 8), (16, 11), (6, 21)])
+        polygon([(17, 2), (18.5, 5.5), (22, 7), (18.5, 8.5), (17, 12), (15.5, 8.5), (12, 7),
+                 (15.5, 5.5)])
+        polygon([(7, 2), (7.7, 3.7), (9.5, 4.5), (7.7, 5.3), (7, 7), (6.3, 5.3), (4.5, 4.5), (6.3, 3.7)])
+        polygon([(20, 14), (20.7, 15.3), (22, 16), (20.7, 16.7), (20, 18), (19.3, 16.7), (18, 16),
+                 (19.3, 15.3)])
+    elif name == "expand":
+        rect((3, 3, 21, 21), radius=2)
+        rect((6, 6, 18, 18), 0, radius=1)
+        rect((9, 9, 15, 15), radius=1)
+        polygon([(3, 3), (9, 3), (3, 9)])
+        polygon([(21, 3), (15, 3), (21, 9)])
+        polygon([(3, 21), (9, 21), (3, 15)])
+        polygon([(21, 21), (15, 21), (21, 15)])
+    elif name == "create":
+        rect((2, 4, 22, 20), radius=2)
+        polygon([(5, 17), (10, 11), (13, 14), (16, 10), (20, 17)], 0)
+        ellipse((5, 7, 8, 10), 0)
+        ellipse((14, 2, 23, 11))
+        rect((17.5, 3.5, 19.5, 9.5), 0)
+        rect((15.5, 5.5, 21.5, 7.5), 0)
+    elif name == "swap":
+        polygon([(3, 6), (16, 6), (16, 3), (22, 9), (16, 15), (16, 12), (3, 12)])
+        polygon([(21, 18), (8, 18), (8, 21), (2, 15), (8, 9), (8, 12), (21, 12)])
+    elif name == "camera":
+        rect((2, 7, 22, 20), radius=2)
+        polygon([(7, 8), (9, 4), (15, 4), (17, 8)])
+        ellipse((8, 9, 16, 17), 0)
+        ellipse((10, 11, 14, 15))
+    elif name == "palette":
+        ellipse((2, 2, 22, 22))
+        ellipse((13, 12, 22, 21), 0)
+        for x, y in ((7, 7), (12, 5), (17, 8), (7, 14)):
+            ellipse((x - 1.25, y - 1.25, x + 1.25, y + 1.25), 0)
+    elif name == "image":
+        rect((2, 3, 22, 21), radius=2)
+        ellipse((6, 6, 10, 10), 0)
+        polygon([(4, 18), (10, 11), (13, 14), (16, 10), (20, 17), (20, 19), (4, 19)], 0)
+    elif name == "stack":
+        rect((3, 3, 18, 18), radius=2)
+        rect((6, 6, 21, 21), radius=2)
+        rect((9, 9, 18, 18), 0, radius=1)
+    elif name == "spark":
+        polygon([(10, 1), (12.5, 7.5), (19, 10), (12.5, 12.5), (10, 19), (7.5, 12.5), (1, 10),
+                 (7.5, 7.5)])
+        polygon([(19, 14), (20, 17), (23, 18), (20, 19), (19, 22), (18, 19), (15, 18), (18, 17)])
+
+    mask = mask.resize((size, size), Image.LANCZOS)
+    rgba = _rgba(color)
+    im = Image.new("RGBA", (size, size), rgba[:3] + (0,))
+    im.putalpha(mask)
+    return im
 
 
 @lru_cache(maxsize=512)
@@ -320,7 +412,8 @@ class BarButton(tk.Canvas):
         if self.kind == "icon" and not self.text:
             x = (h - icon) / 2
         if self.icon:
-            ic = ImageTk.PhotoImage(icon_image(self.icon, icon, fg))
+            render_icon = solid_bar_icon_image if self.icon in SOLID_BAR_ICONS else icon_image
+            ic = ImageTk.PhotoImage(render_icon(self.icon, icon, fg))
             self._imgs.append(ic)
             self.create_image(x, (h - icon) / 2, image=ic, anchor="nw")
             x += icon + px(6 if self.text else 0)
@@ -362,17 +455,28 @@ class Tooltip:
             return
         p = getattr(self.widget, "p", None)
         self._win = tw = tk.Toplevel(self.widget)
+        tw.withdraw()  # place before mapping so XWayland compositors honour geometry
         tw.overrideredirect(True)
         tw.attributes("-topmost", True)
+        try:
+            tw.attributes("-type", "tooltip")  # X11 window type avoids focus stealing
+        except tk.TclError:
+            pass
         bg, fg = (p.field, p.text) if p else ("#222", "#eee")
         tk.Label(tw, text=self.text, bg=bg, fg=fg, font=getattr(self.widget, "font", None), padx=px(8), pady=px(4),
                  bd=0, highlightthickness=1, highlightbackground=p.field_border if p else "#555").pack()
         tw.update_idletasks()
-        x = self.widget.winfo_rootx() + self.widget.winfo_width() // 2 - tw.winfo_width() // 2
-        y = self.widget.winfo_rooty() - tw.winfo_height() - px(6)
-        if y < 0:
+        w, h = tw.winfo_reqwidth(), tw.winfo_reqheight()
+        sx, sy, sw, sh = monitor_area(self.widget)
+        x = self.widget.winfo_rootx() + self.widget.winfo_width() // 2 - w // 2
+        y = self.widget.winfo_rooty() - h - px(6)
+        if y < sy:
             y = self.widget.winfo_rooty() + self.widget.winfo_height() + px(6)
-        tw.geometry(f"+{max(0, x)}+{y}")
+        x = max(sx, min(x, sx + sw - w))
+        y = max(sy, min(y, sy + sh - h))
+        tw.geometry(f"+{x}+{y}")
+        tw.deiconify()
+        tw.update_idletasks()
         round_corners(tw, small=True)
 
     def _hide(self, _e=None):
@@ -394,6 +498,8 @@ class PopupMenu(tk.Toplevel):
                  x: int | None = None, y: int | None = None, above: bool = False, right: bool = False):
         super().__init__(parent_menu or anchor)
         self.p, self.font, self.parent_menu, self.child = p, font, parent_menu, None
+        self.anchor = anchor
+        self.withdraw()  # XWayland window managers may ignore a move after mapping
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.configure(bg=p.field_border)
@@ -404,14 +510,17 @@ class PopupMenu(tk.Toplevel):
             self._add(body, it)
         self.update_idletasks()
         sx, sy, sw, sh = screen_area(self)
+        w, h = self.winfo_reqwidth(), self.winfo_reqheight()
         if x is None:
-            x = anchor.winfo_rootx() + (anchor.winfo_width() - self.winfo_width() if right else 0)
+            x = anchor.winfo_rootx() + (anchor.winfo_width() - w if right else 0)
             below = anchor.winfo_rooty() + anchor.winfo_height() + px(6)
-            over = anchor.winfo_rooty() - self.winfo_height() - px(6)
-            y = over if (above and over >= sy) or below + self.winfo_height() > sy + sh else below
-        x = min(x, sx + sw - self.winfo_width() - px(4))
-        y = min(y, sy + sh - self.winfo_height() - px(4))
+            over = anchor.winfo_rooty() - h - px(6)
+            y = over if (above and over >= sy) or below + h > sy + sh else below
+        x = min(x, sx + sw - w - px(4))
+        y = min(y, sy + sh - h - px(4))
         self.geometry(f"+{max(sx, x)}+{max(sy, y)}")
+        self.deiconify()
+        self.update_idletasks()
         round_corners(self)
         if parent_menu is None:
             self.bind("<Escape>", lambda e: self.close_all())
@@ -560,6 +669,10 @@ class PopupMenu(tk.Toplevel):
 
     def _click(self, e):
         if not self._inside(e.x_root, e.y_root):
+            anchor = self._root_menu().anchor
+            if anchor.winfo_exists() and anchor.winfo_rootx() <= e.x_root < anchor.winfo_rootx() + anchor.winfo_width() and \
+                    anchor.winfo_rooty() <= e.y_root < anchor.winfo_rooty() + anchor.winfo_height():
+                anchor._skip_open = True  # the release should close, not reopen, this menu
             self.close_all()
 
     def _watch_focus(self):

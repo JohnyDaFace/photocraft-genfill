@@ -339,19 +339,24 @@ def mask_upload(mask):
     return out
 
 
-def file_path(settings_dir: Path) -> Path:
+def file_path(settings_dir: Path, workflow_id: str = "") -> Path:
+    if workflow_id:
+        if not workflow_id.replace("-", "").replace("_", "").isalnum():
+            raise ValueError("Invalid workflow identifier.")
+        return settings_dir / "workflows" / f"{workflow_id}.json"
     return settings_dir / "custom_workflow.json"
 
 
-def load_saved(settings_dir: Path) -> dict | None:
+def load_saved(settings_dir: Path, workflow_id: str = "") -> dict | None:
     """The converted workflow kept with the settings (None: there's none, or it can't be read)."""
     try:
-        data = json.loads(file_path(settings_dir).read_text(encoding="utf-8"))
+        data = json.loads(file_path(settings_dir, workflow_id).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return data if is_api(data) else None
 
 
-def save(wf: dict, settings_dir: Path) -> None:
-    settings_dir.mkdir(parents=True, exist_ok=True)
-    file_path(settings_dir).write_text(json.dumps(wf, indent=1), encoding="utf-8")
+def save(wf: dict, settings_dir: Path, workflow_id: str = "") -> None:
+    path = file_path(settings_dir, workflow_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(wf, indent=1), encoding="utf-8")

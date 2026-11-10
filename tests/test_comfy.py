@@ -34,6 +34,24 @@ def test_workflow_uses_flux2_models_and_settings():
     assert "a prompt" in json.dumps(wf)
 
 
+def test_two_image_create_keeps_requested_canvas_shape():
+    from genfill.comfy import build_create_workflow
+    wf = build_create_workflow("person in image 2", 17, 4, 1888, 1056,
+                               {**MODELS, "loras": [{"name": "example_lora.safetensors", "strength": 0.7}]},
+                               ["scene.png", "person.png"], scale_references=True)
+    assert [wf[f"extra{i}_image"]["inputs"]["image"] for i in (1, 2)] == ["scene.png", "person.png"]
+    assert all(wf[f"ref{i}_scale"]["inputs"]["upscale_method"] == "lanczos" for i in (1, 2))
+    assert wf["latent"]["inputs"]["width"] == 1888
+    assert wf["latent"]["inputs"]["height"] == 1056
+    assert wf["sigmas"]["inputs"]["width"] == 1888
+    assert wf["sigmas"]["inputs"]["height"] == 1056
+    assert "ref_size" not in wf
+    assert wf["guider"]["inputs"]["positive"] == ["ref2", 0]
+    assert wf["guider"]["inputs"]["negative"] == ["neg_ref2", 0]
+    assert wf["guider"]["inputs"]["model"] == ["lora0", 0]
+    assert wf["lora0"]["inputs"]["strength_model"] == 0.7
+
+
 def test_refine_workflow_denoise_uses_low_sigmas():
     from genfill.comfy import build_refine_workflow
     wf = build_refine_workflow("t.png", "", seed=1, steps=8, denoise=0.3, width=1024, height=1024, models=MODELS)
@@ -107,6 +125,13 @@ def test_available_models_reads_new_combo_format(monkeypatch):
     assert c.available_models() == {"unet": ["a", "b"], "clip": ["c"], "vae": ["v"]}
 
 
+def test_available_loras_reads_comfyui_loader_choices(monkeypatch):
+    c = ComfyClient("http://x")
+    monkeypatch.setattr(c, "_json", lambda path, payload=None: {
+        "LoraLoaderModelOnly": {"input": {"required": {"lora_name": [["example.safetensors"]]}}}})
+    assert c.available_loras() == ["example.safetensors"]
+
+
 def test_edit_workflow_redraws_whole_image_from_reference():
     from genfill.comfy import build_edit_workflow
     wf = build_edit_workflow("img.png", "make it night", seed=3, steps=4, width=1024, height=768, models=MODELS)
@@ -129,4 +154,34 @@ def test_reference_images_are_chained_after_the_source():
         assert wf["extra1_image"]["inputs"]["image"] == "r.png"
         assert wf["ref2"]["inputs"]["conditioning"] == ["ref1", 0]  # source first = image 1
         assert wf["guider"]["inputs"]["positive"] == ["ref2", 0]
-        assert wf["neg"]["inputs"]["conditioning"] == ["ref2", 0]
+        assert wf["neg"]["inputs"]["conditioning"] == ["text", 0]
+        assert wf["neg_ref2"]["inputs"]["conditioning"] == ["neg_ref1", 0]
+        assert wf["guider"]["inputs"]["negative"] == ["neg_ref2", 0]
+
+
+def test_flux_reference_is_present_in_negative_guidance_like_comfy_template():
+    from genfill.comfy import build_create_workflow
+    wf = build_create_workflow("same person", 1, 4, 1024, 1024, MODELS, ["person.png"])
+    assert wf["neg"]["inputs"]["conditioning"] == ["text", 0]
+    assert wf["neg_ref1"]["class_type"] == "ReferenceLatent"
+    assert wf["neg_ref1"]["inputs"] == {"conditioning": ["neg", 0], "latent": ["ref1_encode", 0]}
+    assert wf["guider"]["inputs"]["negative"] == ["neg_ref1", 0]
+
+
+def test_flux2_create_can_scale_reference_like_comfy_image_edit_subgraph():
+    from genfill.comfy import build_create_workflow
+    wf = build_create_workflow("same person", 1, 4, 1888, 1056, MODELS, ["person.png"],
+                               scale_references=True)
+    assert wf["ref1_scale"] == {"class_type": "ImageScaleToTotalPixels", "inputs": {
+        "upscale_method": "nearest-exact", "megapixels": 1.0, "resolution_steps": 1,
+        "image": ["extra1_image", 0]}}
+    assert wf["ref1_encode"]["inputs"]["pixels"] == ["ref1_scale", 0]
+    assert wf["latent"]["inputs"]["width"] == 1888  # output size stays independent
+
+
+def test_flux3_reference_guidance_is_unchanged():
+    from genfill.comfy import build_create_workflow
+    wf = build_create_workflow("same person", 1, 15, 1024, 1024,
+                               {**MODELS, "family": "flux3"}, ["person.png"])
+    assert "neg_ref1" not in wf
+    assert wf["neg"]["inputs"]["conditioning"] == ["ref1", 0]

@@ -30,6 +30,15 @@ KEEP_FIGURE = "Keep the person's likeness, pose, hair and outfit colours."
 KEEP_FASHION = "Keep the same person, their face and pose; the outfit styling, setting and light may change."
 KEEP_FACE = ("Keep the same person with an identical face, features, eye colour, skin tone, expression and "
              "hair. The light, backdrop and framing may change.")
+REFERENCE_PERSON = ("If image {image} shows the person described in the prompt, keep that exact person's face, "
+                    "facial features, eye colour, skin tone and hair. Apply the style and camera angle to the "
+                    "scene, lighting and framing without changing their identity.")
+FLUX3_REFERENCE_PERSON = ("Use image {image} for the same person's face, hair, pose and body proportions. "
+                          "Keep the composition and camera angle specified by the prompt or chosen angle; "
+                          "apply the style through lighting, colour and texture without altering anatomy.")
+FLUX3_CINEMATIC = ("Cinematic film still of the same scene, with dramatic motivated lighting, deep teal-blue "
+                   "shadows, warm amber practical highlights, rich contrast, natural skin tones, subtle "
+                   "atmospheric haze and fine 35mm film grain.")
 KEEPS = {**{n: KEEP_MODEL for n in ("Model studio", "Model close-up", "In hand", "Model lifestyle",
                                     "Model outdoors")},
          "Food overhead": KEEP_FOOD, "Food dark & moody": KEEP_FOOD, "Interior bright": KEEP_ROOM,
@@ -412,14 +421,17 @@ def era_edit(text: str) -> str:
 
 
 def styled(prompt: str, name: str, path: Path | None = None, restyle: bool = False, edit: bool = False,
-           angle: str = "") -> str:
+           angle: str = "", reference_image: int | None = None, model_family: str = "") -> str:
     """The style's sentence, then the prompt. First, because the look then holds better (Movie poster stops
     lettering a title). No style: the prompt as it is. No prompt: nothing, or with `restyle` (a whole-image
     edit) the style plus what to keep, which just changes the look. `edit`: applied to a photo (the Eras say
     it their own way). `angle`: a camera angle's sentence goes first; restyling then keeps the people and
-    place but not the framing."""
+    place but not the framing. `reference_image`: after a styled Create prompt, keep the referenced person's
+    identity while allowing the style and angle to change the look."""
     prompt = prompt.strip()
     extra = text_for(name, path)
+    if model_family == "flux3" and name == "Cinematic" and extra == dict(DEFAULT_STYLES)["Cinematic"]:
+        extra = FLUX3_CINEMATIC
     if extra and (edit or restyle) and name in ERAS:
         extra = era_edit(extra)
     turn = angle_text(angle)
@@ -433,4 +445,8 @@ def styled(prompt: str, name: str, path: Path | None = None, restyle: bool = Fal
         if turn and keep in (KEEP, KEEP_ERA):  # those keep the framing, which the angle changes
             keep = KEEP_ANGLE
         return f"{look} {keep}"
-    return f"{look} {prompt}"
+    result = f"{look} {prompt}"
+    if reference_image is not None:
+        instruction = FLUX3_REFERENCE_PERSON if model_family == "flux3" else REFERENCE_PERSON
+        result += " " + instruction.format(image=reference_image)
+    return result

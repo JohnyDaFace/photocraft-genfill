@@ -2,7 +2,7 @@ import threading
 
 import numpy as np
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from genfill.photocraft_client import DocInfo
 from genfill.pipeline import UserFacingError, generate, place, run_fill, run_upscale
@@ -740,6 +740,78 @@ def test_create_needs_a_prompt(tmp_path):
     assert comfy.runs == 0
 
 
+@pytest.mark.parametrize(("choice", "ratio"), [("4:5", 4 / 5), ("16:9", 16 / 9)])
+def test_create_with_primary_and_optional_second_reference_uses_two_reference_workflow(tmp_path, choice, ratio):
+    from genfill.pipeline import create
+    face = tmp_path / "face.png"
+    Image.new("RGB", (960, 640), "blue").save(face)
+    settings = _settings(tmp_path)
+    settings.create_second_reference = str(face)
+
+    class TwoImageComfy(FakeComfy):
+        def run(self, wf, on_progress, cancel):
+            self.wfs.append(wf)
+            self.runs += 1
+            image = Image.new("RGB", (1024, 672), "green")
+            ImageDraw.Draw(image).rectangle((452, 276, 572, 396), fill="white")
+            return image
+
+    comfy = TwoImageComfy()
+    result = create(choice, "keep image 1, add the accessory from image 2", settings,
+                    lambda s: None, lambda f: None, threading.Event(), comfy=comfy, count=1,
+                    reference=Image.new("RGB", (512, 512)))
+    wf = comfy.wfs[0]
+    assert comfy.uploads == [(512, 512), (960, 640)]
+    assert wf["extra1_image"]["inputs"]["image"] == "genfill_ref.png"
+    assert wf["extra2_image"]["inputs"]["image"] == "genfill_ref2.png"
+    assert wf["text"]["inputs"]["text"] == "keep image 1, add the accessory from image 2"
+    assert "ref_size" not in wf
+    assert wf["latent"]["inputs"]["width"] == wf["sigmas"]["inputs"]["width"]
+    assert wf["latent"]["inputs"]["height"] == wf["sigmas"]["inputs"]["height"]
+    assert abs(wf["latent"]["inputs"]["width"] / wf["latent"]["inputs"]["height"] - ratio) < 0.015
+    white = np.asarray(result.images[0].convert("RGB"))
+    ys, xs = np.where((white > 240).all(axis=2))
+    assert abs((xs.max() - xs.min()) - (ys.max() - ys.min())) <= 4  # the square was not stretched
+
+
+def test_create_single_reference_needs_no_image_label(tmp_path):
+    comfy = FakeComfy()
+    _create(tmp_path, comfy, prompt="standing beside a red car", count=1,
+            reference=Image.new("RGB", (300, 200), "red"))
+    assert comfy.wfs[0]["text"]["inputs"]["text"] == "standing beside a red car"
+    assert "ref1" in comfy.wfs[0] and "ref2" not in comfy.wfs[0]
+
+
+def test_create_two_references_require_both_image_labels(tmp_path):
+    from genfill.pipeline import create
+    second = tmp_path / "second.png"
+    Image.new("RGB", (100, 100)).save(second)
+    settings = _settings(tmp_path)
+    settings.create_second_reference = str(second)
+    comfy = FakeComfy()
+    with pytest.raises(UserFacingError, match='both "image 1" and "image 2"'):
+        create("4:5", "standing beside a red car", settings, lambda s: None, lambda f: None,
+               threading.Event(), comfy=comfy, count=1, reference=Image.new("RGB", (100, 100)))
+    assert comfy.uploads == []
+
+
+def test_flux3_create_sends_both_references_without_lora(tmp_path):
+    from genfill.pipeline import create
+    second = tmp_path / "second.png"
+    Image.new("RGB", (240, 160), "blue").save(second)
+    settings = _settings(tmp_path)
+    settings.switch_family("flux3")
+    settings.create_second_reference = str(second)
+    comfy = FakeComfy()
+    create("4:5", "Keep image 1 and use the hat from image 2", settings,
+           lambda s: None, lambda f: None, threading.Event(), comfy=comfy, count=1,
+           reference=Image.new("RGB", (200, 200), "red"))
+    wf = comfy.wfs[0]
+    assert [wf[f"extra{i}_image"]["inputs"]["image"] for i in (1, 2)] == ["genfill_ref.png", "genfill_ref2.png"]
+    assert wf["guider"]["inputs"]["positive"] == ["ref2", 0]
+    assert not any(n["class_type"] == "LoraLoaderModelOnly" for n in wf.values())
+
+
 def test_create_reference_is_image_1_for_the_model(tmp_path):
     seen = []
 
@@ -750,6 +822,13 @@ def test_create_reference_is_image_1_for_the_model(tmp_path):
     _create(tmp_path, C(), prompt="the shoe from Image 2 on a rock", count=1,
             reference=Image.new("RGB", (300, 200), "red"))
     assert seen == [("the shoe from image 1 on a rock", True)]
+
+
+def test_flux2_create_uploads_original_reference_for_comfy_scaling(tmp_path):
+    comfy = FakeComfy()
+    _create(tmp_path, comfy, count=1, reference=Image.new("RGB", (3000, 2000)))
+    assert comfy.uploads == [(3000, 2000)]
+    assert comfy.wfs[0]["ref1_encode"]["inputs"]["pixels"] == ["ref1_scale", 0]
 
 
 def test_more_like_a_created_picture_still_opens_as_a_document(tmp_path):

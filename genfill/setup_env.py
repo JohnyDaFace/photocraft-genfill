@@ -33,7 +33,9 @@ RESTART_HINT = {
              "tray), and start them again. This is needed only once.",
     "darwin": "Now save your work, quit PhotoCraft completely (PhotoCraft › Quit, or Cmd+Q) and open it "
               "again. This is needed only once.",
-}.get(sys.platform, "Now log out and back in (or restart), then open PhotoCraft. This is needed only once.")
+}.get(sys.platform, "Now log out and back in, then open PhotoCraft. If your compositor does not use the systemd "
+                   "user environment, add the variables from ~/.config/environment.d/photocraft-genfill.conf "
+                   "to PhotoCraft's launcher instead.")
 
 
 def wanted(port: int = 7878, app_dir: Path = APP_DIR) -> dict[str, str]:

@@ -36,6 +36,19 @@ jobs:
         run: python -m pytest -q tests
       - name: Build app
         run: python build.py
+      - name: Smoke test Linux app startup
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth
+          set +e
+          timeout 20s xvfb-run -a dist/genfill-for-photocraft >genfill-startup.log 2>&1
+          code=$?
+          set -e
+          if [ "$code" -ne 124 ]; then
+            cat genfill-startup.log
+            exit 1
+          fi
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

@@ -9,7 +9,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageOps
 
 from . import custom_workflow, depth, imaging, presets, results_store, settings as settings_file, styles
 from .dpi import px
@@ -65,6 +65,7 @@ class Job:
     reference: Image.Image | None = None
     create: bool = False              # a new picture from the prompt alone (`base` is a blank of its size)
     custom: bool = False              # may run your own workflow (Settings) instead of GenFill's (Generate, Create)
+    second_reference: Image.Image | None = None  # optional Create image 2; `reference` is image 1
 
 
 @dataclass
@@ -228,8 +229,15 @@ def _candidates(job: Job, settings: Settings, status: Status, progress: Progress
         sent_mask = sent_mask.resize((ww, wh), Image.BILINEAR)
         mask_name = comfy.upload(custom_workflow.mask_upload(sent_mask) if own else sent_mask.convert("RGB"),
                                  "genfill_mask.png")
-    refs = [comfy.upload(_reference_upload(job.reference, settings.megapixels), "genfill_ref.png")] \
-        if job.reference is not None and (not own or slots.get("reference")) else []
+    create_image_refs = job.create and start is None and not own and fam.encoder == "flux"
+    raw_create_ref = create_image_refs and settings.model_family == "flux2"
+    refs = []
+    if job.reference is not None and (not own or slots.get("reference")):
+        refs.append(comfy.upload(job.reference if raw_create_ref else _reference_upload(job.reference, settings.megapixels),
+                                 "genfill_ref.png"))
+    if create_image_refs and job.second_reference is not None:
+        refs.append(comfy.upload(job.second_reference if raw_create_ref else
+                                 _reference_upload(job.second_reference, settings.megapixels), "genfill_ref2.png"))
     who = "your workflow" if own else fam.label.split(' (')[0]
     left_out = "" if job.reference is None else \
         ("It takes no reference picture, so the reference is left out." if own and not refs else
@@ -250,7 +258,8 @@ def _candidates(job: Job, settings: Settings, status: Status, progress: Progress
                                          refs[0] if refs else None, (ww, wh))
             out = comfy.run(wf, on_progress, cancel, node=slots.get("result")).convert("RGB")
             if job.create or edit:
-                out = out.resize(job.base.size, Image.LANCZOS).convert("RGBA")
+                out = (ImageOps.fit(out, job.base.size, method=Image.LANCZOS) if job.create
+                       else out.resize(job.base.size, Image.LANCZOS)).convert("RGBA")
                 if not job.create:
                     out.putalpha(job.base.getchannel("A"))
             else:  # only the selection changes, whatever the workflow drew elsewhere
@@ -264,8 +273,10 @@ def _candidates(job: Job, settings: Settings, status: Status, progress: Progress
                 out = imaging.match_colors(job.base, out, job.mask)
                 out = imaging.merge(job.base, out, imaging.blend_mask(job.base, job.selection))
         elif job.create and start is None:
-            wf = build_create_workflow(job.prompt, seed, settings.steps, ww, wh, settings.workflow_models, refs)
-            out = comfy.run(wf, on_progress, cancel).resize(job.base.size, Image.LANCZOS).convert("RGBA")
+            wf = build_create_workflow(job.prompt, seed, settings.steps, ww, wh, settings.workflow_models, refs,
+                                       scale_references=raw_create_ref)
+            out = ImageOps.fit(comfy.run(wf, on_progress, cancel), job.base.size,
+                               method=Image.LANCZOS).convert("RGBA")
         elif edit:
             wf = build_edit_workflow(src_name, job.prompt, seed, settings.steps, ww, wh, settings.workflow_models, refs,
                                      denoise=denoise)
@@ -326,7 +337,8 @@ def generate(prompt: str, settings: Settings, status: Status, progress: Progress
         if remove:
             told = remove_prompt(label)
         elif styled:  # with no prompt: just the style, keeping everything else
-            told = styles.styled(label, settings.style, restyle=True, edit=True, angle=settings.angle)
+            told = styles.styled(label, settings.style, restyle=True, edit=True, angle=settings.angle,
+                                 model_family=settings.model_family)
         else:
             told = label if edit else fill_text(label, settings)
         job = Job(image, mask, doc.selection, told, None if remove else reference, custom=not remove)
@@ -1027,15 +1039,24 @@ def create(choice: str, prompt: str, settings: Settings, status: Status, progres
     if not label:
         raise UserFacingError("Describe the picture to create first, for example 'a lighthouse at dusk, "
                               "film photo'.")
-    if reference is not None:  # with no picture to edit, the reference is the model's first image
+    if settings.create_second_reference and reference is None:
+        raise UserFacingError("Choose the main Reference photo before using Create image 2.")
+    second = load_reference(settings.create_second_reference) if settings.create_second_reference else None
+    if second is not None and not all(re.search(rf"\bimage\s*{n}\b", label, flags=re.IGNORECASE)
+                                  for n in (1, 2)):
+        raise UserFacingError('With two Create images, mention both "image 1" and "image 2" in the prompt '
+                              'so the model knows what to take from each.')
+    if reference is not None and second is None:  # with one picture, an old "image 2" prompt means image 1
         label_for_model = re.sub(r"\bimage\s*2\b", "image 1", label, flags=re.IGNORECASE)
     else:
         label_for_model = label
-    label_for_model = styles.styled(label_for_model, settings.style, angle=settings.angle)
+    label_for_model = styles.styled(label_for_model, settings.style, angle=settings.angle,
+                                    reference_image=1 if reference is not None else None,
+                                    model_family=settings.model_family)
     count = max(1, min(MAX_VARIATIONS, count or settings.variations))
     W, H = create_size(choice, settings.megapixels)
     base = Image.new("RGBA", (W, H), (255, 255, 255, 255))
-    job = Job(base, None, None, label_for_model, reference, create=True, custom=True)
+    job = Job(base, None, None, label_for_model, reference, create=True, custom=True, second_reference=second)
     try:
         images = _candidates(job, settings, status, progress, cancel, comfy, count)
     except ComfyError as e:

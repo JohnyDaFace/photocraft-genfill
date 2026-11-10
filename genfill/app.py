@@ -242,10 +242,19 @@ class App:
         self.root.configure(bg=p.field_border if BORDERLESS else p.chrome)
         outer = self.frame = tk.Frame(self.root, bg=p.chrome)
         outer.pack(fill="both", expand=True, padx=1 if BORDERLESS else 0, pady=1 if BORDERLESS else 0)
-        # two rows: the prompt on top, the buttons under it
-        top = tk.Frame(outer, bg=p.chrome, padx=px(6), pady=0)
+        # two rows plus a narrow control rail on the right
+        body = tk.Frame(outer, bg=p.chrome)
+        body.pack(fill="x")
+        rail = tk.Frame(body, bg=p.chrome)
+        rail.pack(side="right", fill="y")
+        tk.Frame(rail, bg=p.separator, width=max(1, px(1))).pack(side="left", fill="y", padx=(px(2), 0))
+        controls = tk.Frame(rail, bg=p.chrome)
+        controls.pack(side="right", fill="y", padx=(px(2), px(3)))
+        content = tk.Frame(body, bg=p.chrome)
+        content.pack(side="left", fill="both", expand=True)
+        top = tk.Frame(content, bg=p.chrome, padx=px(6), pady=0)
         top.pack(fill="x", pady=(px(7), 0))
-        row = tk.Frame(outer, bg=p.chrome, padx=px(6), pady=px(6))
+        row = tk.Frame(content, bg=p.chrome, padx=px(6), pady=px(6))
         row.pack(fill="x")
 
         def sep():
@@ -255,10 +264,11 @@ class App:
             return BarButton(row, p, f["button"] if kw.get("kind") == "primary" else f["body"], **kw)
 
         # drag grip
-        grip = tk.Canvas(top, width=px(14), height=px(32), bg=p.chrome, highlightthickness=0, cursor="fleur")
-        for cx in (4, 10):
-            for cy in (10, 16, 22):
-                grip.create_oval(px(cx - 1.5), px(cy - 1.5), px(cx + 1.5), px(cy + 1.5), fill=p.text_faint, outline="")
+        grip = self.grip = tk.Canvas(top, width=px(14), height=px(32), bg=p.chrome,
+                                     highlightthickness=0, cursor="fleur")
+        for cy in (10, 16, 22):
+            grip.create_oval(px(5.5), px(cy - 1.5), px(8.5), px(cy + 1.5),
+                             fill=p.text_faint, outline="")
         grip.pack(side="left", padx=(px(2), px(4)))
         Tooltip(grip, "Drag to move the bar")
         grip.bind("<ButtonPress-1>", self._drag_start)
@@ -279,26 +289,33 @@ class App:
         sep()
 
         # actions: the ones that fit the current mode are shown
-        self.rm_btn = button(icon="eraser", text="Remove", kind="outline", chevron=True, command=self.remove_menu,
-                             tooltip="Take things out: what's selected or named, people, cars, the background, "
+        self.rm_btn = button(icon="eraser", command=self.remove_menu,
+                             tooltip="Remove: what's selected or named, people, cars, the background, "
                                      "reflections")
-        self.sel_btn = button(icon="target", text="Select", kind="outline", chevron=True, command=self.select_menu,
-                              tooltip="Select things by name (SAM 3) or by distance; nothing in the picture changes")
-        self.fix_btn = button(icon="wand", text="Fix", kind="outline", chevron=True, command=self.fix_menu,
-                              tooltip="Enhance, restore, colorize, faces, and change the look: light, sky, blur")
-        self.size_btn = button(icon="expand", text="Resize", kind="outline", chevron=True, command=self.resize_menu,
-                               tooltip="Expand the canvas, or upscale to a bigger copy")
-        self.create_btn = button(icon="create", text="Create", kind="outline", chevron=True, command=self.create_menu,
-                                 tooltip="A new picture, a picture from your sketch, or a photoshoot")
-        self.others_btn = button(icon="swap", text="Other results", kind="outline", command=self.show_other_results,
-                                 tooltip="Swap the result you placed for another one from the same Generate")
-        self.reshoot_btn = button(icon="camera", text="Reshoot", kind="outline", command=self.reshoot_shot,
-                                  tooltip="Make this shot again (same shoot, same set)")
+        self.sel_btn = button(icon="target", command=self.select_menu,
+                              tooltip="Select: find things by name (SAM 3) or by distance")
+        self.fix_btn = button(icon="wand", command=self.fix_menu,
+                              tooltip="Fix: enhance, restore, colorize, faces, light, sky, blur")
+        self.size_btn = button(icon="expand", command=self.resize_menu,
+                               tooltip="Resize: expand the canvas or upscale to a bigger copy")
+        self.create_btn = button(icon="create", command=self.create_menu,
+                                 tooltip="Create: a new picture, a sketch, or a photoshoot")
+        self.others_btn = button(icon="swap", command=self.show_other_results,
+                                 tooltip="Other results: swap for another result from the same Generate")
+        self.reshoot_btn = button(icon="camera", command=self.reshoot_shot,
+                                  tooltip="Reshoot: make this shot again")
         self.gen_btn = button(icon="spark", text="Generate", kind="primary", command=self._generate_or_cancel)
-        self.more_btn = button(icon="more", command=self.more_menu, tooltip="Settings, connection, version")
+        self.generate_sep = tk.Frame(row, bg=p.separator, width=max(1, px(1)), height=px(22))
+        self.more_btn = BarButton(controls, p, f["body"], icon="more", command=self.more_menu,
+                                  tooltip="Settings, connection, version")
+        if BORDERLESS:
+            self.minimize_btn = BarButton(controls, p, f["body"], icon="minimize",
+                                          command=lambda: minimize(self.root), tooltip="Minimize the bar")
         self.actions = [self.rm_btn, self.sel_btn, self.fix_btn, self.size_btn, self.create_btn, self.others_btn,
                         self.reshoot_btn, self.gen_btn]
-        self.more_btn.pack(side="right", padx=(px(4), 0))
+        self.more_btn.pack(side="bottom", pady=(0, px(6)))
+        if BORDERLESS:
+            self.minimize_btn.pack(side="top", pady=(px(7), 0))
         if self.update_info:
             self.more_btn.set_on(False, badge=True)
 
@@ -317,6 +334,7 @@ class App:
         """Show the buttons that fit the mode and the busy state."""
         for b in self.actions:
             b.pack_forget()
+        self.generate_sep.pack_forget()
         shown = {"selection": [self.rm_btn, self.fix_btn, self.gen_btn],
                  "image": [self.sel_btn, self.rm_btn, self.fix_btn, self.size_btn, self.create_btn, self.gen_btn],
                  "empty": [self.create_btn, self.gen_btn]}[self.mode]
@@ -325,8 +343,10 @@ class App:
             shown = shown[:-1] + [self.others_btn, shown[-1]]
         if self.shoot_tagged and self.picker is None and not self.busy and self.mode != "empty":
             shown = shown[:-1] + [self.reshoot_btn, shown[-1]]
-        for b in reversed(shown):  # right-aligned, next to the ⋯ button
+        for b in reversed(shown):  # right-aligned, with Generate set off from the icon actions
             b.pack(side="right", padx=(px(4), 0))
+            if b is self.gen_btn:
+                self.generate_sep.pack(side="right", padx=(px(8), px(4)))
         style = self._style_label() if self.mode != "selection" else ""  # fills don't use the style
         if style and self.mode == "image":  # Generate with nothing typed just applies the style
             self.prompt.set_placeholder(f"Describe a change, or leave empty to make it {style}…")
@@ -335,8 +355,9 @@ class App:
         empty = self.mode == "empty"
         # nothing open: the menu button only picks the shape; the blue button creates
         self.create_btn.configure_button(
-            text=self.settings.create_choice if empty else "Create",
-            tooltip="Shape of the new picture" if empty else "A new picture from the prompt, opens as a new document")
+            text="Size" if empty else "", kind="outline" if empty else "icon",
+            tooltip=f"Size: choose output shape ({self.settings.create_choice})" if empty
+            else "Create: new picture, sketch, or photoshoot")
         if self.busy:
             self.gen_btn.configure_button(icon="x", text="Cancel", kind="outline", tooltip="Stop (Esc)")
         elif empty:
@@ -416,6 +437,9 @@ class App:
 
     # -- menus -----------------------------------------------------------------------------------
     def _menu(self, anchor, items, right: bool = False) -> None:
+        if getattr(anchor, "_skip_open", False):  # the anchor press just closed its menu
+            anchor._skip_open = False
+            return
         PopupMenu(anchor, items, self.p, self.fonts["body"], right=right)
 
     def history_menu(self) -> None:
@@ -655,6 +679,28 @@ class App:
         items.append(("sub", "Photoshoot", self.shoot_items()))
         self._menu(self.create_btn, items)
 
+    def choose_create_second(self) -> None:
+        if self.busy:
+            return
+        if not self.reference:
+            self.say("Choose the main Reference picture first.", None)
+            return
+        path = filedialog.askopenfilename(
+            parent=self.root, title="Create image 2 (optional additional reference)",
+            initialdir=str(Path(self.settings.create_second_reference).parent) if self.settings.create_second_reference else None,
+            filetypes=[("Pictures", "*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff"), ("All files", "*.*")])
+        if path:
+            self.settings.create_second_reference = path
+            self.settings.save()
+            self._show_reference()
+            self.say(f"Create image 2: {Path(path).name}", None)
+
+    def clear_create_second(self) -> None:
+        self.settings.create_second_reference = ""
+        self.settings.save()
+        self._show_reference()
+        self.say("Create image 2 cleared.", None)
+
     def _set_create_choice(self, choice: str) -> None:
         s = Settings.load()
         s.create_choice = self.settings.create_choice = choice
@@ -667,11 +713,19 @@ class App:
             self.choose_reference()
             return
         name = Path(self.reference).name
-        self._menu(self.ref_btn, [("header", "Reference picture"),
-                                  ("info", (name if len(name) <= 40 else name[:37] + "…")),
-                                  ("info", 'Mention it as "image 2" in the prompt'), ("sep",),
-                                  ("item", "Choose another…", self.choose_reference, "folder"),
-                                  ("item", "Don't use a reference", self.clear_reference, "x")])
+        second = self.settings.create_second_reference
+        items = [("header", "Main reference"),
+                 ("info", (name if len(name) <= 40 else name[:37] + "…")),
+                 ("info", "Create: image 1 · Generate: image 2"),
+                 ("item", "Change main image…", self.choose_reference, "folder"),
+                 ("item", "Clear main image", self.clear_reference, "x"),
+                 ("sep",), ("header", "Additional Create reference · image 2"),
+                 ("info", Path(second).name if second else "None selected"),
+                 ("item", "Choose image 2…", self.choose_create_second, "folder")]
+        if second:
+            items += [("info", 'Prompt: name both "image 1" and "image 2"'),
+                      ("item", "Clear image 2", self.clear_create_second, "x")]
+        self._menu(self.ref_btn, items)
 
     def more_menu(self) -> None:
         items = [("header", "Connections")]
@@ -784,17 +838,19 @@ class App:
             try:
                 if pc is None:
                     if not all(setup_env.status(self.settings.port).values()):
+                        self.events.put(("photocraft_connection", (False, "not set up")))
                         self.events.put(("photocraft", True))  # can't tell: stay visible so it can be set up
                         time.sleep(3)
                         continue
                     pc = PhotoCraftClient(self.settings.port, Path(self.settings.token_file), timeout=5).__enter__()
+                    self.events.put(("photocraft_connection", (True, "connected")))
                     self.events.put(("photocraft", True))
                 try:
                     doc = pc._inspect()
                     mode = "selection" if doc.get("selectionBounds") else "image"
                     layer = (doc.get("name"), doc.get("path"), doc.get("activeLayer"))
                 except PhotoCraftError as e:
-                    if not str(e).startswith("PhotoCraft:"):
+                    if "no document open" not in str(e).lower():
                         raise  # the connection went away
                     mode, layer = "empty", None  # PhotoCraft answered with an error: no document open
                 if mode != last:
@@ -810,8 +866,12 @@ class App:
                     self.events.put(("theme", (pc.call("ui.inspect", {}) or {}).get("theme")))
             except (PhotoCraftError, OSError):
                 if pc is not None:
-                    pc.__exit__(None, None, None)
-                pc, last = None, None
+                    try:
+                        pc.__exit__(None, None, None)
+                    except OSError:
+                        pass
+                pc, n, last, last_layer = None, 0, None, None
+                self.events.put(("photocraft_connection", (False, "reconnecting")))
                 self.events.put(("photocraft", False))
                 time.sleep(3)
             except Exception:  # anything unexpected: reconnect, never stop watching, or the bar stays stuck
@@ -820,7 +880,9 @@ class App:
                         pc.__exit__(None, None, None)
                 except Exception:
                     pass
-                pc, last, last_layer = None, None, None
+                pc, n, last, last_layer = None, 0, None, None
+                self.events.put(("photocraft_connection", (False, "reconnecting")))
+                self.events.put(("photocraft", False))
                 time.sleep(3)
 
     def start(self, job: str, choice: str | None = None, factor: int | None = None, what: str = "",
@@ -1012,6 +1074,9 @@ class App:
                     self.set_mode(value)
                 elif kind == "photocraft":
                     self.follow_photocraft(value)
+                elif kind == "photocraft_connection":
+                    if not (value[0] and self.conn.get("PhotoCraft", (None, ""))[1] == "version not compatible"):
+                        self.conn["PhotoCraft"] = value
                 elif kind == "show":
                     self.background, self.photocraft_seen, self._photocraft_down = False, False, 0
                     self.show()
@@ -1131,16 +1196,21 @@ class App:
             return False
         self.reference = path
         self._show_reference()
-        self.say(f'Reference: {Path(path).name}. Mention it as "image 2" in the prompt.', None, hide_after=6000)
+        self.say(f'Reference: {Path(path).name}. Create uses it automatically; Generate sees it as image 2.',
+                 None, hide_after=6000)
         return True
 
     def clear_reference(self) -> None:
         self.reference = None
+        self.settings.create_second_reference = ""
+        self.settings.save()
         self._show_reference()
 
     def _show_reference(self) -> None:
         self.ref_btn.set_on(bool(self.reference), badge=bool(self.reference))
-        self.ref_btn.configure_button(tooltip=f"Reference picture: {Path(self.reference).name}" if self.reference
+        second = self.settings.create_second_reference
+        self.ref_btn.configure_button(tooltip=(f"Main: {Path(self.reference).name}"
+                                               + (f" · Create image 2: {Path(second).name}" if second else "")) if self.reference
                                       else "Add a reference picture (an object or style to use)")
 
     # -- other windows ---------------------------------------------------------------------------
