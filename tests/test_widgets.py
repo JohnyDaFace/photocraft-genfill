@@ -328,10 +328,11 @@ def test_hyprland_focus_listener_ignores_other_events_and_marks_window_change():
 
 def test_popup_observes_hyprland_focus_socket(root, tmp_path, monkeypatch):
     import socket
+    import sys
     from genfill import widgets
 
-    if not hasattr(socket, "AF_UNIX"):
-        pytest.skip("Unix-domain sockets are unavailable on this platform")
+    if not sys.platform.startswith("linux"):
+        pytest.skip("Hyprland socket integration applies only on Linux")
     path = tmp_path / "hyprland.sock"
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(str(path))
