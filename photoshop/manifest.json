@@ -2,10 +2,10 @@
   "manifestVersion": 5,
   "id": "com.photocraft.genfill.bridge",
   "name": "GenFill Companion",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "main": "index.html",
   "host": { "app": "PS", "minVersion": "24.1.0" },
   "apiVersion": 2,
   "entrypoints": [{ "type": "panel", "id": "genfill", "label": { "default": "GenFill" }, "minimumSize": { "width": 280, "height": 360 } }],
-  "requiredPermissions": { "network": { "domains": ["http://127.0.0.1:47862"] }, "localFileSystem": "plugin" }
+  "requiredPermissions": { "network": { "domains": "all" }, "localFileSystem": "plugin" }
 }

@@ -1,4 +1,5 @@
 import build
+import json
 from zipfile import ZipFile
 
 from genfill.photoshop_install import build_package
@@ -28,6 +29,13 @@ def test_photoshop_package_has_manifest_at_archive_root(tmp_path):
     package = build_package(tmp_path, tmp_path / "build" / "panel.ccx")
     with ZipFile(package) as archive:
         assert set(archive.namelist()) == {"manifest.json", "index.js"}
+
+
+def test_photoshop_network_permission_and_runtime_target_stay_local():
+    manifest = json.loads((build.ROOT / "photoshop" / "manifest.json").read_text())
+    panel = (build.ROOT / "photoshop" / "index.js").read_text()
+    assert manifest["requiredPermissions"]["network"]["domains"] == "all"
+    assert "const SERVER = 'http://127.0.0.1:47862'" in panel
 
 
 def test_photoshop_installer_is_copied_out_of_exe_before_opening(tmp_path, monkeypatch):
