@@ -1,3 +1,3 @@
 """PhotoCraft Generative Fill companion."""
 
-__version__ = "1.3.2"  # keep in step with the release tag (v1.3.2)
+__version__ = "1.4.0"  # keep in step with the release tag (v1.4.0)

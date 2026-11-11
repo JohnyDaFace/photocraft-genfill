@@ -223,9 +223,6 @@ Copyright © 2026 Yiannis (JohnyDaFace). Bar icons from [Lucide](https://lucide.
 
 ## Install
 
-Photoshop support is currently on `main` and is planned for the next release. The v1.3.2 downloads support
-PhotoCraft only; build from source to try Photoshop before the next release.
-
 Download the file for your computer from the **Releases** page of this repository:
 
 - **Windows:** `GenFill-for-PhotoCraft-Windows.zip` → unzip → double-click `GenFill-for-PhotoCraft.exe`.
