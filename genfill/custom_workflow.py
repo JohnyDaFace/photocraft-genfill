@@ -305,7 +305,8 @@ def problems(slots: dict) -> list[str]:
 
 # -- running ---------------------------------------------------------------------------------------
 def prepare(wf: dict, slots: dict, prompt: str, seed: int, picture: str | None = None, mask: str | None = None,
-            reference: str | None = None, size: tuple[int, int] | None = None) -> dict:
+            reference: str | None = None, size: tuple[int, int] | None = None,
+            keep_seeds: bool = False) -> dict:
     """A copy of the workflow with GenFill's picture, mask, reference (names ComfyUI gave the uploads), prompt,
     a new seed and the working size put in."""
     wf = copy.deepcopy(wf)
@@ -319,9 +320,10 @@ def prepare(wf: dict, slots: dict, prompt: str, seed: int, picture: str | None =
         wf[nid]["inputs"][field] = prompt
     rng = random.Random(seed)
     for node in wf.values():
-        for k in SEED_FIELDS:
-            if isinstance(node["inputs"].get(k), (int, float)):
-                node["inputs"][k] = rng.randint(0, 2**32 - 1)
+        if not keep_seeds:
+            for k in SEED_FIELDS:
+                if isinstance(node["inputs"].get(k), (int, float)):
+                    node["inputs"][k] = rng.randint(0, 2**32 - 1)
         if size and "Empty" in node["class_type"] and "Latent" in node["class_type"]:
             for k, v in (("width", size[0]), ("height", size[1])):
                 if isinstance(node["inputs"].get(k), (int, float)):

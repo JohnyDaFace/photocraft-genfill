@@ -30,14 +30,16 @@ class Picker(tk.Toplevel):
         self._on_pick, self._on_discard, self._on_similar = on_pick, on_discard, on_similar
         self._on_close = on_close or (lambda: None)
         self._photos = [ImageTk.PhotoImage(im) for im in results.previews]  # keep references alive
+        columns = min(4, len(self._photos))
+        last_row = (len(self._photos) - 1) // columns + 1
 
         self.hint = tk.Label(self, bg=p.chrome, fg=p.text_dim, font=fonts["small"], justify="left")
-        self.hint.grid(row=0, column=0, columnspan=len(self._photos), sticky="w", pady=(0, px(10)))
+        self.hint.grid(row=0, column=0, columnspan=columns, sticky="w", pady=(0, px(10)))
         self.cells, self.tags = [], []
         for i, photo in enumerate(self._photos):
             cell = tk.Frame(self, bg=p.chrome, highlightthickness=px(2), highlightbackground=p.chrome,
                             highlightcolor=p.accent, cursor="hand2")
-            cell.grid(row=1, column=i, padx=px(4), sticky="n")
+            cell.grid(row=1 + i // columns, column=i % columns, padx=px(4), pady=px(4), sticky="n")
             img = tk.Label(cell, image=photo, bg=p.chrome, bd=0)
             img.pack()
             tag = tk.Label(cell, text=str(i + 1), bg=p.chrome, fg=p.text_dim, font=fonts["small"])
@@ -54,7 +56,7 @@ class Picker(tk.Toplevel):
             self.tags.append(tag)
 
         self.bottom = tk.Frame(self, bg=p.chrome)
-        self.bottom.grid(row=2, column=0, columnspan=len(self._photos), sticky="e", pady=(px(10), 0))
+        self.bottom.grid(row=last_row + 1, column=0, columnspan=columns, sticky="e", pady=(px(10), 0))
         self.close_btn = None
         self.protocol("WM_DELETE_WINDOW", self.close)
         self.bind("<Escape>", lambda e: self.close())

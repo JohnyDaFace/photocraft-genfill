@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Custom workflows can keep their saved seeds and generated image dimensions.
+- Custom workflows can return selected additional image outputs from one run, including paired previews.
+- A native-size custom result opens as a new PhotoCraft document when it cannot fit the current canvas unchanged.
+
 ## 1.3.2 — 2026-11-11
 
 ### Added

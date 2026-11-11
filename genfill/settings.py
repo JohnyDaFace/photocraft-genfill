@@ -94,6 +94,9 @@ class Settings:
     other_families: dict = field(default_factory=dict)  # the files, steps and LoRAs of the families not in use
     custom_workflow: str = ""  # your own ComfyUI workflow for Generate and Create: the file it came from ("" = off)
     custom_slots: dict = field(default_factory=dict)  # which of its nodes take the picture, prompt, result…
+    custom_keep_seeds: bool = False  # leave numeric seed fields from the selected workflow alone
+    custom_native_size: bool = False  # keep the workflow's generated pixels and dimensions
+    custom_result_nodes: list[str] = field(default_factory=list)  # additional output nodes to collect per run
     saved_workflows: list = field(default_factory=list)  # named workflow choices kept beside the built-in models
     active_workflow_id: str = ""  # selected saved workflow; legacy custom_workflow can have no id
 
@@ -152,6 +155,9 @@ class Settings:
             s.custom_slots = {}
         if not isinstance(s.saved_workflows, list):
             s.saved_workflows = []
+        if not isinstance(s.custom_result_nodes, list):
+            s.custom_result_nodes = []
+        s.custom_result_nodes = [str(node) for node in s.custom_result_nodes if isinstance(node, str)]
         s.saved_workflows = [w for w in s.saved_workflows if isinstance(w, dict)
                              and isinstance(w.get("id"), str) and isinstance(w.get("name"), str)
                              and isinstance(w.get("source"), str) and isinstance(w.get("slots"), dict)]

@@ -199,7 +199,8 @@ def _candidates(job: Job, settings: Settings, status: Status, progress: Progress
     edit = job.mask is None
     # A fill works on a crop around the selection when that gives it more pixels than the whole picture
     # (a small selection in a big photo comes back as sharp as the photo instead of soft).
-    crop = None if edit else imaging.fill_crop(src.size, job.mask, settings.megapixels)
+    preserve_source = bool(job.custom and settings.custom_workflow and settings.custom_native_size)
+    crop = None if edit or preserve_source else imaging.fill_crop(src.size, job.mask, settings.megapixels)
     if crop:
         cw, ch = crop[2] - crop[0], crop[3] - crop[1]
         ww, wh = imaging.crop_working_size(cw, ch, settings.megapixels)
@@ -208,6 +209,9 @@ def _candidates(job: Job, settings: Settings, status: Status, progress: Progress
     fam = family(settings.model_family)
     own = _own_workflow(settings) if job.custom else None  # (workflow, slots): yours from Settings
     slots = own[1] if own else {}
+    native_size = bool(own and settings.custom_native_size)
+    if native_size:
+        ww, wh = (cw, ch) if crop else src.size
     if edit and not job.create and fam.encoder == "text" and not own:  # Create (and its Similar) is fine
         raise UserFacingError(f"{fam.label.split(' (')[0]} can only make new pictures, not edit one. "
                               "Select an area to fill, or pick another image model in Settings.")
@@ -255,23 +259,34 @@ def _candidates(job: Job, settings: Settings, status: Status, progress: Progress
         on_progress = progress if count == 1 else (lambda _f: None)
         if own:
             wf = custom_workflow.prepare(own[0], slots, job.prompt, seed, src_name, mask_name,
-                                         refs[0] if refs else None, (ww, wh))
-            out = comfy.run(wf, on_progress, cancel, node=slots.get("result")).convert("RGB")
-            if job.create or edit:
-                out = (ImageOps.fit(out, job.base.size, method=Image.LANCZOS) if job.create
-                       else out.resize(job.base.size, Image.LANCZOS)).convert("RGBA")
-                if not job.create:
-                    out.putalpha(job.base.getchannel("A"))
-            else:  # only the selection changes, whatever the workflow drew elsewhere
-                out = out.resize((ww, wh), Image.LANCZOS)
-                if crop:
-                    full = prepared.copy()
-                    full.paste(out.resize((cw, ch), Image.LANCZOS), crop[:2])
-                    out = full
-                else:
-                    out = out.resize(job.base.size, Image.LANCZOS)
-                out = imaging.match_colors(job.base, out, job.mask)
-                out = imaging.merge(job.base, out, imaging.blend_mask(job.base, job.selection))
+                                         refs[0] if refs else None, None if native_size else (ww, wh),
+                                         keep_seeds=settings.custom_keep_seeds)
+            nodes = [slots["result"], *(n for n in settings.custom_result_nodes if n in own[0] and n != slots["result"])]
+            outputs = (comfy.run_selected(wf, on_progress, cancel, nodes) if len(nodes) > 1 else
+                       [comfy.run(wf, on_progress, cancel, node=slots.get("result"))])
+            for out in outputs:
+                out = out.convert("RGB")
+                if native_size:
+                    out = out.convert("RGBA")
+                    if not job.create and out.size == job.base.size:
+                        out.putalpha(job.base.getchannel("A"))
+                elif job.create or edit:
+                    out = (ImageOps.fit(out, job.base.size, method=Image.LANCZOS) if job.create
+                           else out.resize(job.base.size, Image.LANCZOS)).convert("RGBA")
+                    if not job.create:
+                        out.putalpha(job.base.getchannel("A"))
+                else:  # only the selection changes, whatever the workflow drew elsewhere
+                    out = out.resize((ww, wh), Image.LANCZOS)
+                    if crop:
+                        full = prepared.copy()
+                        full.paste(out.resize((cw, ch), Image.LANCZOS), crop[:2])
+                        out = full
+                    else:
+                        out = out.resize(job.base.size, Image.LANCZOS)
+                    out = imaging.match_colors(job.base, out, job.mask)
+                    out = imaging.merge(job.base, out, imaging.blend_mask(job.base, job.selection))
+                images.append(out)
+            continue
         elif job.create and start is None:
             wf = build_create_workflow(job.prompt, seed, settings.steps, ww, wh, settings.workflow_models, refs,
                                        scale_references=raw_create_ref)
@@ -347,8 +362,10 @@ def generate(prompt: str, settings: Settings, status: Status, progress: Progress
             images = [imaging.keep_colors(image, im) for im in images]
         shown = name or label or (" · ".join(x for x in (settings.style, settings.angle) if x) if styled else "")
         name = ("Edit" if edit or named else "Remove" if remove else "Generative Fill")             + (f" – {shown[:40]}" if shown else "")
-        return Results(images, [_preview(im, doc.selection) for im in images], name, not edit,
-                       (image.width, image.height), doc.selection, job)
+        native_document = bool(job.custom and settings.custom_workflow and settings.custom_native_size and
+                               (mask is not None or any(out.size != image.size for out in images)))
+        return Results(images, [_preview(im, None if native_document else doc.selection) for im in images], name, not edit,
+                       (image.width, image.height), doc.selection, job, new_document=native_document)
     except (PhotoCraftError, ComfyError) as e:
         raise UserFacingError(str(e)) from e
 
@@ -364,7 +381,7 @@ def similar(results: Results, index: int, settings: Settings, status: Status, pr
                                         start=chosen, denoise=SIMILAR_DENOISE)
     except ComfyError as e:
         raise UserFacingError(str(e)) from e
-    box = results.job.selection
+    box = None if results.new_document else results.job.selection
     return Results(images, [results.previews[index]] + [_preview(im, box) for im in images[1:]], results.layer,
                    results.masked, results.size, results.selection, results.job, results.expand_to, results.offset,
                    results.new_document)

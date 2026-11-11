@@ -206,14 +206,101 @@ def test_a_lost_workflow_file_says_so(own, tmp_path):
 
 
 def test_settings_remember_the_workflow(tmp_path):
-    s = Settings(custom_workflow="C:/wf/mine.json", custom_slots={"result": "8"})
+    s = Settings(custom_workflow="C:/wf/mine.json", custom_slots={"result": "8"},
+                 custom_keep_seeds=True, custom_native_size=True, custom_result_nodes=["9"])
     s.save(tmp_path / "s.json")
     back = Settings.load(tmp_path / "s.json")
     assert back.custom_workflow == "C:/wf/mine.json" and back.custom_slots == {"result": "8"}
+    assert back.custom_keep_seeds and back.custom_native_size and back.custom_result_nodes == ["9"]
     raw = json.loads((tmp_path / "s.json").read_text())
     raw["custom_slots"] = "junk"
     (tmp_path / "s.json").write_text(json.dumps(raw))
     assert Settings.load(tmp_path / "s.json").custom_slots == {}
+
+
+def test_custom_workflow_can_keep_its_saved_seed():
+    api = cw.to_api(text_to_image(), INFO)
+    original = api["5"]["inputs"]["seed"]
+    prepared = cw.prepare(api, cw.detect(api), "a red car", 7, keep_seeds=True)
+    assert prepared["5"]["inputs"]["seed"] == original
+
+
+def test_custom_workflow_can_return_selected_outputs_in_one_run(own):
+    saved = cw.load_saved(settings_file.CONFIG_DIR)
+    saved["9"] = {"class_type": "PreviewImage", "inputs": {"images": ["7", 0]}}
+    cw.save(saved, settings_file.CONFIG_DIR)
+
+    class MultiComfy(OwnComfy):
+        def run_selected(self, wf, on_progress, cancel, nodes):
+            self.wfs.append(wf)
+            self.nodes.append(nodes)
+            return [Image.new("RGB", (120, 80), color) for color in ("red", "blue")]
+
+    comfy = MultiComfy()
+    own.custom_result_nodes = ["8", "9"]
+    base = Image.new("RGBA", (100, 100), "white")
+    job = Job(base, None, None, "test", custom=True)
+    images = _candidates(job, own, lambda s: None, lambda f: None, threading.Event(), comfy, 1)
+    assert len(images) == 2
+    assert [im.getpixel((0, 0))[:3] for im in images] == [(255, 0, 0), (0, 0, 255)]
+
+
+def test_custom_workflow_can_preserve_generated_dimensions(own):
+    class LargeComfy(OwnComfy):
+        def run(self, wf, on_progress, cancel, node=None):
+            return Image.new("RGB", (120, 80), "red")
+
+    own.custom_native_size = True
+    base = Image.new("RGBA", (100, 100), "white")
+    job = Job(base, None, None, "test", custom=True)
+    out = _candidates(job, own, lambda s: None, lambda f: None, threading.Event(), LargeComfy(), 1)[0]
+    assert out.size == (120, 80)
+
+
+def test_native_size_edit_opens_a_new_document(own, tmp_path):
+    from tests.test_pipeline import FakePC
+    from genfill.pipeline import generate, place
+
+    class LargeComfy(OwnComfy):
+        def run(self, wf, on_progress, cancel, node=None):
+            return Image.new("RGB", (120, 80), "red")
+
+    own.custom_native_size = True
+    own.exchange_dir = str(tmp_path)
+    base = Image.new("RGBA", (100, 100), "white")
+    pc = FakePC(base, None)
+    results = generate("change the background", own, lambda s: None, lambda f: None,
+                       threading.Event(), pc=pc, comfy=LargeComfy(), count=1)
+    assert results.new_document
+    assert results.images[0].size == (120, 80)
+    place(results, 0, own, pc=pc)
+    assert len(pc.opened) == 1 and not pc.placed
+
+
+def test_changing_main_result_refreshes_additional_output_choices():
+    from types import SimpleNamespace
+    from genfill.settings_dialog import SettingsDialog
+
+    class Listbox:
+        def __init__(self): self.items, self.selected = [], set()
+        def delete(self, *_): self.items, self.selected = [], set()
+        def insert(self, _, text): self.items.append(text)
+        def selection_set(self, index): self.selected.add(index)
+        def curselection(self): return sorted(self.selected)
+
+    wf = {nid: {"class_type": "PreviewImage", "inputs": {"images": ["source", 0]}}
+          for nid in ("raw", "matched", "third")}
+    box = Listbox()
+    state = SimpleNamespace(own_wf=wf, extra_results=box, extra_result_ids=[],
+                            _slots=lambda: {"result": "matched"})
+    state._extra_result_nodes = lambda: [state.extra_result_ids[i] for i in box.curselection()]
+    SettingsDialog._refresh_extra_results(state, ["third"])
+    assert state.extra_result_ids == ["raw", "third"]
+    assert state._extra_result_nodes() == ["third"]
+    state._slots = lambda: {"result": "raw"}
+    SettingsDialog._refresh_extra_results(state)
+    assert state.extra_result_ids == ["matched", "third"]
+    assert state._extra_result_nodes() == ["third"]
 
 
 def test_saved_workflows_have_separate_copies_and_settings_entries(tmp_path):

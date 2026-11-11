@@ -126,9 +126,28 @@ class SettingsDialog(tk.Toplevel):
             cb = ttk.Combobox(self.own_frame, textvariable=v, style="PC.TCombobox", font=f["small"], state="readonly")
             cb.grid(row=i, column=1, sticky="ew", pady=px(2))
             self.slot_boxes[slot] = cb
+        self.slot_boxes["result"].bind("<<ComboboxSelected>>", lambda _: self._refresh_extra_results())
+        option_row = len(custom_workflow.SLOTS)
+        self.keep_seeds_var = tk.BooleanVar(value=settings.custom_keep_seeds)
+        self.native_size_var = tk.BooleanVar(value=settings.custom_native_size)
+        for offset, (title, var) in enumerate((
+            ("Keep workflow seeds (repeated runs may match)", self.keep_seeds_var),
+            ("Keep workflow output size (opens a new document if needed)", self.native_size_var),
+        )):
+            tk.Checkbutton(self.own_frame, text=title, variable=var, bg=p.chrome, fg=p.text,
+                           activebackground=p.chrome, activeforeground=p.text, selectcolor=p.field,
+                           font=f["small"], bd=0, highlightthickness=0).grid(
+                row=option_row + offset, column=0, columnspan=2, sticky="w", pady=px(2))
+        tk.Label(self.own_frame, text="Additional outputs", bg=p.chrome, fg=p.text_faint,
+                 font=f["small"]).grid(row=option_row + 2, column=0, sticky="nw", pady=px(2))
+        self.extra_results = tk.Listbox(self.own_frame, height=3, selectmode="multiple", exportselection=False,
+                                        bg=p.field, fg=p.text, selectbackground=p.accent, bd=0,
+                                        font=f["small"])
+        self.extra_results.grid(row=option_row + 2, column=1, sticky="ew", pady=px(2))
+        self.extra_result_ids: list[str] = []
         tk.Label(self.own_frame, text="Used by Generate and Create. Everything else keeps the image model above.",
                  bg=p.chrome, fg=p.text_faint, font=f["small"], anchor="w").grid(
-            row=len(custom_workflow.SLOTS), column=0, columnspan=2, sticky="w", pady=(px(2), px(4)))
+            row=option_row + 3, column=0, columnspan=2, sticky="w", pady=(px(2), px(4)))
         self._show_workflow(settings.custom_slots)
         row += 1
 
@@ -319,6 +338,9 @@ class SettingsDialog(tk.Toplevel):
             entry = next((w for w in self.saved_workflows if w["id"] == self.active_workflow_id), None)
             if entry is not None:
                 entry["slots"] = self._slots()
+                entry["keep_seeds"] = self.keep_seeds_var.get()
+                entry["native_size"] = self.native_size_var.get()
+                entry["result_nodes"] = self._extra_result_nodes()
 
     def _activate_workflow(self, workflow_id: str) -> None:
         entry = next((w for w in self.saved_workflows if w["id"] == workflow_id), None)
@@ -331,6 +353,9 @@ class SettingsDialog(tk.Toplevel):
             return
         self.active_workflow_id = workflow_id
         self.own_path, self.own_wf = entry["source"], wf
+        self.keep_seeds_var.set(bool(entry.get("keep_seeds", False)))
+        self.native_size_var.set(bool(entry.get("native_size", False)))
+        self.work.custom_result_nodes = list(entry.get("result_nodes", []))
         self._show_workflow(entry.get("slots"))
         self._refresh_model_choices()
 
@@ -355,7 +380,23 @@ class SettingsDialog(tk.Toplevel):
             self.slot_ids[slot] = ids
             self.slot_boxes[slot].configure(values=list(ids))
             self.slot_vars[slot].set(custom_workflow.label(wf, chosen.get(slot)))
+        self._refresh_extra_results(self.work.custom_result_nodes)
         self.own_frame.grid()
+
+    def _refresh_extra_results(self, selected: list[str] | None = None) -> None:
+        """Keep extra output choices in sync when the main Result changes."""
+        selected = self._extra_result_nodes() if selected is None else selected
+        wf = self.own_wf
+        primary = self._slots().get("result")
+        self.extra_results.delete(0, "end")
+        self.extra_result_ids = [n for n in custom_workflow.candidates(wf)["result"] if n != primary]
+        for i, nid in enumerate(self.extra_result_ids):
+            self.extra_results.insert("end", custom_workflow.label(wf, nid))
+            if nid in selected:
+                self.extra_results.selection_set(i)
+
+    def _extra_result_nodes(self) -> list[str]:
+        return [self.extra_result_ids[i] for i in self.extra_results.curselection()]
 
     def _slots(self) -> dict:
         return {slot: self.slot_ids.get(slot, {}).get(self.slot_vars[slot].get()) for slot in custom_workflow.SLOTS}
@@ -400,6 +441,9 @@ class SettingsDialog(tk.Toplevel):
         self.active_workflow_id = entry["id"]
         self.pending_workflows[entry["id"]] = wf
         self.own_path, self.own_wf = path, wf
+        self.keep_seeds_var.set(bool(entry.get("keep_seeds", False)))
+        self.native_size_var.set(bool(entry.get("native_size", False)))
+        self.work.custom_result_nodes = list(entry.get("result_nodes", []))
         self._show_workflow()
         entry["slots"] = self._slots()
         self._refresh_model_choices()
@@ -459,6 +503,9 @@ class SettingsDialog(tk.Toplevel):
             s.use_loras = bool(s.loras) if self._lora_edited else self.work.use_loras
             s.custom_workflow = self.own_path if self.own_wf is not None else ""
             s.custom_slots = self._slots() if self.own_wf is not None else {}
+            s.custom_keep_seeds = self.keep_seeds_var.get() if self.own_wf is not None else False
+            s.custom_native_size = self.native_size_var.get() if self.own_wf is not None else False
+            s.custom_result_nodes = self._extra_result_nodes() if self.own_wf is not None else []
             self._remember_active_workflow()
             s.active_workflow_id = self.active_workflow_id if self.own_wf is not None else ""
             s.saved_workflows = [dict(w) for w in self.saved_workflows]

@@ -83,6 +83,44 @@ def test_history_error_becomes_comfy_error(monkeypatch):
         c.run(_wf(), on_progress=lambda f: None, cancel=threading.Event())
 
 
+def test_selected_outputs_are_collected_from_one_queue_run(monkeypatch):
+    from PIL import Image
+
+    c = ComfyClient("http://x")
+    queued = []
+
+    def fake_json(path, payload=None):
+        if path == "/prompt":
+            queued.append(payload)
+            return {"prompt_id": "p1"}
+        return {"p1": {"status": {"completed": True}, "outputs": {
+            "raw": {"images": [{"filename": "raw.png"}]},
+            "matched": {"images": [{"filename": "matched.png"}]},
+            "debug": {"images": [{"filename": "debug.png"}]},
+        }}}
+
+    monkeypatch.setattr(c, "_json", fake_json)
+    fetched = []
+    def fetch(im):
+        fetched.append(im["filename"])
+        return Image.new("RGB", (1, 1), "white")
+    monkeypatch.setattr(c, "_fetch", fetch)
+    images = c.run_selected({}, lambda _: None, threading.Event(), ["matched", "raw"])
+    assert len(queued) == 1 and len(images) == 2
+    assert fetched == ["matched.png", "raw.png"]
+
+
+def test_missing_selected_output_is_an_error(monkeypatch):
+    from PIL import Image
+    c = ComfyClient("http://x")
+    monkeypatch.setattr(c, "_json", lambda path, payload=None: {"prompt_id": "p1"} if path == "/prompt" else
+                        {"p1": {"status": {"completed": True}, "outputs": {
+                            "raw": {"images": [{"filename": "raw.png"}]}}}})
+    monkeypatch.setattr(c, "_fetch", lambda im: Image.new("RGB", (1, 1), "white"))
+    with pytest.raises(ComfyError, match="matched"):
+        c.run_selected({}, lambda _: None, threading.Event(), ["raw", "matched"])
+
+
 def test_prompt_node_errors_become_comfy_error(monkeypatch):
     c = ComfyClient("http://x")
     monkeypatch.setattr(c, "_json", lambda path, payload=None: {

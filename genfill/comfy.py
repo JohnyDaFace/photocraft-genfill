@@ -494,8 +494,13 @@ class ComfyClient:
         """Like `run`, but every output image (e.g. one mask per thing SAM 3 found)."""
         return [self._fetch(im) for im in self._outputs(workflow, on_progress, cancel)]
 
+    def run_selected(self, workflow: dict, on_progress: Callable[[float | None], None], cancel,
+                     nodes: list[str]) -> list[Image.Image]:
+        """Return images from the selected output nodes, in the order selected, from one queue run."""
+        return [self._fetch(im) for im in self._outputs(workflow, on_progress, cancel, nodes=nodes)]
+
     def _outputs(self, workflow: dict, on_progress: Callable[[float | None], None], cancel,
-                 node: str | None = None) -> list[dict]:
+                 node: str | None = None, nodes: list[str] | None = None) -> list[dict]:
         """Queue the workflow, wait for it, and return its output images' descriptions (at least one)."""
         res = self._json("/prompt", {"prompt": workflow, "client_id": self.client_id})
         if "prompt_id" not in res or res.get("node_errors"):
@@ -516,8 +521,14 @@ class ComfyClient:
                 if status.get("status_str") == "error":
                     raise ComfyError("ComfyUI failed: " + _error_text(status))
                 outputs = entry.get("outputs", {})
-                if node is not None and node in outputs:  # the result node, not a preview along the way
-                    outputs = {node: outputs[node]}
+                if nodes is not None:
+                    missing = [nid for nid in nodes if not outputs.get(nid, {}).get("images")]
+                    if missing and status.get("completed"):
+                        raise ComfyError("ComfyUI finished without an image from selected output: " +
+                                         ", ".join(missing))
+                    outputs = {nid: outputs[nid] for nid in nodes if nid in outputs} if not missing else {}
+                elif node is not None:
+                    outputs = {node: outputs[node]} if node in outputs else {}
                 images = [im for out in outputs.values() for im in out.get("images", [])]
                 if images:
                     return images
