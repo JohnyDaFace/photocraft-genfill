@@ -2,7 +2,7 @@
   "manifestVersion": 5,
   "id": "com.photocraft.genfill.bridge",
   "name": "GenFill Companion",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "index.html",
   "host": { "app": "PS", "minVersion": "24.1.0" },
   "apiVersion": 2,

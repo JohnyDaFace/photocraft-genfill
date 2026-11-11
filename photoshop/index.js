@@ -62,8 +62,8 @@ async function checkConnection() {
     if (!response.ok || !data.connected) throw new Error('Companion unavailable');
     ui.connection.textContent = data.paired ? `Connected · ${data.version || ''}` : 'Connected · pair token';
     ui.connection.className = data.paired ? 'connected' : 'disconnected';
-  } catch (_) {
-    ui.connection.textContent = 'Disconnected';
+  } catch (error) {
+    ui.connection.textContent = `Disconnected · ${String(error.message || error)}`;
     ui.connection.className = 'disconnected';
   }
 }
@@ -187,11 +187,14 @@ async function placeResult(index) {
 ui['save-token'].addEventListener('click', async () => {
   const value = ui.token.value.trim();
   if (!value) { setMessage('Enter a companion token.', true); return; }
-  await uxpStorage.secureStorage.setItem(TOKEN_KEY, new Uint8Array([...value].map(char => char.charCodeAt(0))));
-  ui.token.value = '';
-  ui.settings.open = false;
-  setMessage('Token saved.');
-  checkConnection();
+  try {
+    await uxpStorage.secureStorage.setItem(TOKEN_KEY, value);
+    ui.token.value = '';
+    setMessage('Token saved. Checking connection…');
+    await checkConnection();
+  } catch (error) {
+    setMessage(`Could not save token: ${String(error.message || error)}`, true);
+  }
 });
 ui.generate.addEventListener('click', generate);
 checkConnection();
