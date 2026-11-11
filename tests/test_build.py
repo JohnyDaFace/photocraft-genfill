@@ -54,7 +54,7 @@ def test_photoshop_installer_is_copied_out_of_exe_before_opening(tmp_path, monke
     monkeypatch.setattr(photoshop_install, "package_path", lambda: package)
     monkeypatch.setattr(photoshop_install, "APP_DIR", tmp_path / "persistent")
     monkeypatch.setattr(photoshop_install.sys, "platform", "win32")
-    monkeypatch.setattr(photoshop_install.os, "startfile", lambda path: opened.append(path))
+    monkeypatch.setattr(photoshop_install.os, "startfile", lambda path: opened.append(path), raising=False)
     photoshop_install.open_installer()
     installed = tmp_path / "persistent" / package.name
     assert installed.read_bytes() == b"package"
