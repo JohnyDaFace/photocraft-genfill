@@ -1,5 +1,6 @@
 """The Photoshop panel's localhost contract, without Photoshop or a live model."""
 import base64
+import io
 import json
 import threading
 from urllib.error import HTTPError
@@ -27,6 +28,14 @@ def test_decode_photoshop_raw_pixels():
     source = decode_source({"image_format": "raw", "image_width": 2, "image_height": 1,
                             "image_components": 4, "image": base64.b64encode(pixels).decode()})
     assert source.size == (2, 1) and source.getpixel((1, 0)) == (0, 0, 255, 128)
+
+
+def test_decode_photoshop_jpeg_composite():
+    data = io.BytesIO()
+    Image.new("RGB", (4, 3), "red").save(data, "JPEG")
+    source = decode_source({"image_format": "jpeg", "image": base64.b64encode(data.getvalue()).decode()})
+    assert source.size == (4, 3)
+    assert source.getpixel((0, 0))[3] == 255
 
 
 def test_generate_uses_selected_companion_workflow(monkeypatch):
@@ -100,6 +109,8 @@ def test_companion_can_request_photoshop_capture_and_receive_pixels():
         waiter.start()
         command = _request(port, "/v1/editor/next?document=42&width=2&height=1", token="test-secret")["command"]
         assert command["type"] == "capture"
+        _request(port, "/v1/editor/progress", {"id": command["id"], "stage": "reading pixels"}, "test-secret")
+        assert server.editor.state()["stage"] == "reading pixels"
         pixels = base64.b64encode(bytes((1, 2, 3, 255, 4, 5, 6, 255))).decode()
         _request(port, "/v1/editor/reply", {"id": command["id"], "result": {"document": 42,
                  "image_format": "raw", "image_width": 2, "image_height": 1,
@@ -111,3 +122,28 @@ def test_companion_can_request_photoshop_capture_and_receive_pixels():
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_document_stays_connected_while_photoshop_is_capturing(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(photoshop_bridge.time, "monotonic", lambda: now[0])
+    editor = photoshop_bridge.EditorSession()
+    editor.next(document=42, width=4000, height=3000)
+    returned = []
+    waiter = threading.Thread(target=lambda: returned.append(editor.request({"type": "capture"}, timeout=30)))
+    waiter.start()
+    command = editor.next(document=42, width=4000, height=3000)
+    now[0] = 105.0
+    assert editor.state()["connected"] is True
+    assert editor.state()["document"] == 42
+    editor.reply({"id": command["id"], "result": {"document": 42}})
+    waiter.join(2)
+    assert returned == [{"document": 42}]
+
+
+def test_editor_reports_photoshop_selection():
+    editor = photoshop_bridge.EditorSession()
+    editor.next(document=42, width=20, height=10, selection=True)
+    assert editor.state()["selection"] is True
+    editor.next(document=42, width=20, height=10, selection=False)
+    assert editor.state()["selection"] is False

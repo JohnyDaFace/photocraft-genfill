@@ -210,6 +210,8 @@ def _candidates(job: Job, settings: Settings, status: Status, progress: Progress
     own = _own_workflow(settings) if job.custom else None  # (workflow, slots): yours from Settings
     slots = own[1] if own else {}
     native_size = bool(own and settings.custom_native_size)
+    reference_is_picture = bool(own and slots.get("picture") and job.reference is not None and
+                                (job.create or not slots.get("reference")))
     if native_size:
         ww, wh = (cw, ch) if crop else src.size
     if edit and not job.create and fam.encoder == "text" and not own:  # Create (and its Similar) is fine
@@ -222,7 +224,12 @@ def _candidates(job: Job, settings: Settings, status: Status, progress: Progress
         prepared = _flat(src) if edit or own else imaging.prepare_source(src)
         sent = prepared.crop(crop) if crop else prepared
         if not own or slots.get("picture"):
-            sent = sent.resize((ww, wh), Image.LANCZOS)
+            if reference_is_picture and start is None:
+                # With one image input, an explicit bar image replaces the workflow's first Load Image.
+                sent = (job.reference.convert("RGB") if native_size else
+                        _reference_upload(job.reference, settings.megapixels))
+            else:
+                sent = sent.resize((ww, wh), Image.LANCZOS)
             if own and not edit and not slots.get("mask") and custom_workflow.picture_carries_mask(own[0], slots):
                 sent_mask = (job.mask.crop(crop) if crop else job.mask).resize((ww, wh), Image.BILINEAR)
                 sent = sent.convert("RGBA")  # the picture, with the selection in its alpha
@@ -236,14 +243,19 @@ def _candidates(job: Job, settings: Settings, status: Status, progress: Progress
     create_image_refs = job.create and start is None and not own and fam.encoder == "flux"
     raw_create_ref = create_image_refs and settings.model_family == "flux2"
     refs = []
-    if job.reference is not None and (not own or slots.get("reference")):
-        refs.append(comfy.upload(job.reference if raw_create_ref else _reference_upload(job.reference, settings.megapixels),
-                                 "genfill_ref.png"))
+    if own and job.create and job.second_reference is not None and not slots.get("reference"):
+        raise UserFacingError("This workflow has only one image input. Remove the second Create image, "
+                              "or choose a workflow with a second image input.")
+    extra_reference = (job.second_reference if own and job.create and slots.get("picture") else
+                       None if reference_is_picture else job.reference)
+    if extra_reference is not None and (not own or slots.get("reference")):
+        refs.append(comfy.upload(extra_reference if raw_create_ref or native_size else
+                                 _reference_upload(extra_reference, settings.megapixels), "genfill_ref.png"))
     if create_image_refs and job.second_reference is not None:
         refs.append(comfy.upload(job.second_reference if raw_create_ref else
                                  _reference_upload(job.second_reference, settings.megapixels), "genfill_ref2.png"))
     who = "your workflow" if own else fam.label.split(' (')[0]
-    left_out = "" if job.reference is None else \
+    left_out = "" if job.reference is None or reference_is_picture else \
         ("It takes no reference picture, so the reference is left out." if own and not refs else
          "It can't see pictures, so the reference is left out." if not own and fam.encoder == "text" else "")
     images = []

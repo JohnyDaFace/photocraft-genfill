@@ -213,3 +213,38 @@ def test_chosen_workflow_is_saved_as_a_model_choice(tmp_path, monkeypatch):
         assert custom_workflow.load_saved(tmp_path) == wf
     finally:
         root.destroy()
+
+
+def test_workflow_options_open_separately_and_save_stays_visible(monkeypatch):
+    from genfill.settings_dialog import SettingsDialog
+
+    monkeypatch.setattr(SettingsDialog, "load_models", lambda self: None)
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("no display")
+    root.withdraw()
+    try:
+        dialog = SettingsDialog(root, Settings(), theme.PALETTES["Pro"], theme.fonts(root), lambda _: None)
+        dialog._workflow_read("C:/my-workflow.json", {
+            "1": {"class_type": "CLIPTextEncode", "inputs": {"text": "hello", "clip": ["2", 0]}},
+            "3": {"class_type": "PreviewImage", "inputs": {"images": ["4", 0]}},
+            "5": {"class_type": "PreviewImage", "inputs": {"images": ["4", 0]}},
+        }, [])
+        dialog.open_workflow_settings()
+        dialog.update()
+        assert dialog.workflow_window.winfo_exists()
+        assert dialog.workflow_window.winfo_toplevel() is not dialog
+        assert dialog.save_button.winfo_manager() == "pack"
+        assert dialog.save_button.winfo_toplevel() is dialog
+        assert dialog.winfo_height() <= root.winfo_screenheight() - 80
+        dialog.keep_seeds_var.set(True)
+        dialog.native_size_var.set(True)
+        dialog.extra_results.selection_set(0)
+        dialog._close_workflow_settings()
+        settings = dialog._collect()
+        assert settings.custom_keep_seeds and settings.custom_native_size
+        assert len(settings.custom_result_nodes) == 1
+        assert "2 outputs" in dialog.workflow_summary.get()
+    finally:
+        root.destroy()

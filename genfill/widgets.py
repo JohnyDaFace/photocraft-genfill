@@ -3,6 +3,7 @@ Shapes are drawn with Pillow at 4x and scaled down (Tk's own canvas drawing has 
 from __future__ import annotations
 
 import ctypes
+import json
 import math
 import os
 import socket
@@ -508,6 +509,28 @@ def _hyprland_event_socket() -> Path | None:
     return None
 
 
+def _hyprland_window_pid(address: str) -> int | None:
+    """Look up a Hyprland window's PID using the compositor request socket."""
+    path = _hyprland_event_socket()
+    if path is None:
+        return None
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
+            conn.settimeout(0.5)
+            conn.connect(str(path.with_name(".socket.sock")))
+            conn.sendall(b"j/clients")
+            data = b""
+            while chunk := conn.recv(65536):
+                data += chunk
+        wanted = "0x" + address.lower().removeprefix("0x")
+        for client in json.loads(data):
+            if client.get("address", "").lower() == wanted:
+                return client.get("pid")
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 def _listen_hyprland_focus(conn: socket.socket, changed: threading.Event, stop: threading.Event) -> None:
     """Watch compositor focus changes without asking Tk's stale XWayland focus state."""
     with conn:
@@ -526,6 +549,9 @@ def _listen_hyprland_focus(conn: socket.socket, changed: threading.Event, stop: 
             while b"\n" in pending:
                 line, pending = pending.split(b"\n", 1)
                 if line.startswith(b"activewindowv2>>"):
+                    address = line.split(b">>", 1)[1].decode(errors="ignore").strip()
+                    if address and _hyprland_window_pid(address) == os.getpid():
+                        continue  # focus moved between this process's bar and menu
                     changed.set()
                     return
 

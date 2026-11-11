@@ -27,7 +27,7 @@ from .comfy import ComfyClient, ComfyError
 from .dpi import px
 from .families import family
 from .photocraft_client import PhotoCraftClient, PhotoCraftError
-from . import editor_focus, photoshop_bridge, photoshop_install
+from . import editor_focus, photoshop_actions, photoshop_bridge, photoshop_install
 from .photoshoot import SHOT_COUNTS, reshoot, run_photoshoot
 from .picker import Picker
 from .style_panel import StylePanel
@@ -387,12 +387,9 @@ class App:
         for b in self.actions:
             b.pack_forget()
         self.generate_sep.pack_forget()
-        if self.active_editor == "photoshop":
-            shown = [self.create_btn, self.gen_btn]
-        else:
-            shown = {"selection": [self.rm_btn, self.fix_btn, self.gen_btn],
-                     "image": [self.sel_btn, self.rm_btn, self.fix_btn, self.size_btn, self.create_btn, self.gen_btn],
-                     "empty": [self.create_btn, self.gen_btn]}[self.mode]
+        shown = {"selection": [self.rm_btn, self.fix_btn, self.gen_btn],
+                 "image": [self.sel_btn, self.rm_btn, self.fix_btn, self.size_btn, self.create_btn, self.gen_btn],
+                 "empty": [self.create_btn, self.gen_btn]}[self.mode]
         available_results = (self.last_results is not None and
                              getattr(self.last_results, "editor", "photocraft") == self.active_editor) or \
                             (self.tagged and self.active_editor == "photocraft")
@@ -840,7 +837,8 @@ class App:
         if presets.prompt_for(name) is None:
             return
         if self.mode == "empty":
-            self.say("Open a photo in PhotoCraft first, then pick the preset.", None, hide_after=6000)
+            self.say(f"Open a photo in {'Photoshop' if getattr(self, 'active_editor', 'photocraft') == 'photoshop' else 'PhotoCraft'} first, "
+                     "then pick the preset.", None, hide_after=6000)
             return
         self.start("fill", preset=name)
 
@@ -910,6 +908,7 @@ class App:
         """Follow the last focused editor and its current document."""
         pc, n, last, last_layer = None, 0, None, None
         last_editor = self.active_editor
+        last_stage = ""
         while True:
             time.sleep(0.8)
             focused = editor_focus.focused_editor()
@@ -919,9 +918,14 @@ class App:
                 last = None
             if last_editor == "photoshop":
                 state = self.photoshop_server.editor.state() if self.photoshop_server else {}
+                stage = state.get("stage", "")
+                if self.busy and stage and stage != last_stage:
+                    self.events.put(("status", stage + "…"))
+                last_stage = stage
                 self.conn["Photoshop"] = (bool(state.get("connected")),
                                           "panel connected" if state.get("connected") else "open and pair the panel")
-                mode = "image" if state.get("connected") and state.get("document") else "empty"
+                mode = ("selection" if state.get("selection") else "image") if state.get("connected") \
+                    and state.get("document") else "empty"
                 if mode != last:
                     self.events.put(("mode", mode))
                     last = mode
@@ -1017,10 +1021,6 @@ class App:
         self._arrange()
         self.progress_busy()
         if self.active_editor == "photoshop":
-            if job not in ("fill", "create"):
-                self.finish()
-                self.say("This tool is not yet available for Photoshop. Use Generate or Create.", BAD)
-                return
             if job == "create":
                 shape, reference = self.settings.create_choice, self.reference
                 def fn(prompt_, settings, status, progress, cancel):
@@ -1030,9 +1030,14 @@ class App:
                     return self._offer(results, settings, status)
                 self.say(f"Creating a {shape} picture…", None)
             else:
-                reference = self.reference
+                reference = (self.reference if choice == "reference" else None) if job == "faces" \
+                    else (self.reference if not preset else None)
+                photoshop_prompt = (self.prompt.get().strip() if job == "enhance" or
+                                    (job == "faces" and choice == "typed") else prompt)
                 def fn(prompt_, settings, status, progress, cancel):
-                    return self._photoshop_edit(prompt_, settings, status, progress, cancel, reference)
+                    return self._photoshop_action(job, photoshop_prompt, settings, status, progress, cancel,
+                                                  choice=choice, factor=factor, what=what, label=label,
+                                                  preset=preset, reference=reference)
                 self.say("Reading the active Photoshop document…", None)
             threading.Thread(target=self._work, args=(fn, prompt), daemon=True).start()
             return
@@ -1140,7 +1145,7 @@ class App:
     def _photoshop_edit(self, prompt, settings, status, progress, cancel, reference):
         if self.photoshop_server is None:
             raise UserFacingError("Photoshop bridge is not running.")
-        capture = self.photoshop_server.editor.request({"type": "capture"}, cancel=cancel)
+        capture = self.photoshop_server.editor.request({"type": "capture"}, timeout=120, cancel=cancel)
         base = photoshop_bridge.decode_source(capture)
         status("Generating from the Photoshop document…")
         images = photoshop_bridge.generate_images({**capture, "mode": "edit", "prompt": prompt,
@@ -1152,6 +1157,25 @@ class App:
         results.photoshop_document = capture.get("document")
         return self._offer(results, settings, status)
 
+    def _photoshop_action(self, job, prompt, settings, status, progress, cancel, **options):
+        if self.photoshop_server is None:
+            raise UserFacingError("Photoshop bridge is not running.")
+        capture = self.photoshop_server.editor.request({"type": "capture"}, timeout=120, cancel=cancel)
+        base = photoshop_bridge.decode_source(capture)
+        selection = tuple(capture["selection_bounds"]) if capture.get("selection_bounds") else None
+        mask = photoshop_actions.decode_selection(capture, base.size)
+        canvas = photoshop_actions.CapturedDocument(base, selection, Path(settings.exchange_dir), mask)
+        def send_selection(selected):
+            self.photoshop_server.editor.request({"type": "selection", "document": capture["document"],
+                "mask": base64.b64encode(selected.tobytes()).decode("ascii")}, timeout=60, cancel=cancel)
+        result = photoshop_actions.run_job(job, canvas, settings, status, progress, cancel,
+                                            on_selection=send_selection, prompt=prompt, **options)
+        if isinstance(result, Results):
+            result.editor = "photoshop"
+            result.photoshop_document = capture["document"]
+            return self._offer(result, settings, status)
+        return result
+
     def _place_photoshop(self, results, index: int, status, cancel) -> str:
         if self.photoshop_server is None:
             raise UserFacingError("Photoshop bridge is not running.")
@@ -1160,7 +1184,8 @@ class App:
         image.save(buffer, "PNG")
         status("Placing the result in Photoshop…")
         reply = self.photoshop_server.editor.request({"type": "place", "document": getattr(results, "photoshop_document", None),
-            "index": index, "image": {"image": base64.b64encode(buffer.getvalue()).decode("ascii"),
+            "index": index, "hide_original": getattr(results, "hide_original", False),
+            "image": {"image": base64.b64encode(buffer.getvalue()).decode("ascii"),
                                        "width": image.width, "height": image.height}}, timeout=60, cancel=cancel)
         results.placed = Placed(index, ("Photoshop", ""), None)
         return reply.get("message", "Placed result in Photoshop")

@@ -33,13 +33,28 @@ class SettingsDialog(tk.Toplevel):
         self.title("Settings – Generative Fill for PhotoCraft")
         self.configure(bg=palette.chrome)
         self.attributes("-topmost", True)
-        self.resizable(True, False)
+        self.resizable(True, True)
         self.minsize(px(520), 0)
         self.transient(master)
         theme.title_bar(self, palette)
         p, f = palette, fonts
-        fr = tk.Frame(self, bg=p.chrome, padx=px(16), pady=px(14))
-        fr.pack(fill="both", expand=True)
+        body = tk.Frame(self, bg=p.chrome)
+        body.pack(fill="both", expand=True)
+        self.scroll_canvas = tk.Canvas(body, bg=p.chrome, bd=0, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(body, orient="vertical", command=self.scroll_canvas.yview)
+        self.scroll_canvas.configure(yscrollcommand=scrollbar.set)
+        self.scroll_canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        self.bind("<MouseWheel>", lambda event: self.scroll_canvas.yview_scroll(
+            -1 if event.delta > 0 else 1, "units"))
+        self.bind("<Button-4>", lambda _: self.scroll_canvas.yview_scroll(-1, "units"))
+        self.bind("<Button-5>", lambda _: self.scroll_canvas.yview_scroll(1, "units"))
+        fr = tk.Frame(self.scroll_canvas, bg=p.chrome, padx=px(16), pady=px(14))
+        self.content_frame = fr
+        content_id = self.scroll_canvas.create_window((0, 0), window=fr, anchor="nw")
+        fr.bind("<Configure>", lambda _: self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all")))
+        self.scroll_canvas.bind("<Configure>",
+                                lambda event: self.scroll_canvas.itemconfigure(content_id, width=event.width))
         fr.columnconfigure(1, weight=1)
         self.vars: dict[str, tk.StringVar] = {}
         row = 0
@@ -115,19 +130,43 @@ class SettingsDialog(tk.Toplevel):
             side="right", padx=(px(4), 0))
         theme.PillButton(own_row, "Choose…", self.choose_workflow, p, f["small"], height=24).pack(side="right")
         row += 1
-        self.own_frame = tk.Frame(fr, bg=p.chrome)
-        self.own_frame.grid(row=row, column=1, columnspan=2, sticky="ew")
+        self.workflow_button = theme.PillButton(fr, "Workflow settings…", self.open_workflow_settings,
+                                                p, f["small"], height=26)
+        self.workflow_button.grid(row=row, column=1, sticky="w", pady=(0, px(4)))
+        row += 1
+        self.workflow_summary = tk.StringVar()
+        tk.Label(fr, textvariable=self.workflow_summary, bg=p.chrome, fg=p.text_faint, font=f["small"],
+                 anchor="w").grid(row=row, column=1, columnspan=2, sticky="w")
+        row += 1
+        self.workflow_window = tk.Toplevel(self)
+        self.workflow_window.withdraw()
+        self.workflow_window.title("Workflow settings")
+        self.workflow_window.configure(bg=p.chrome)
+        self.workflow_window.transient(self)
+        self.workflow_window.resizable(True, False)
+        theme.title_bar(self.workflow_window, p)
+        self.own_frame = tk.Frame(self.workflow_window, bg=p.chrome, padx=px(16), pady=px(10))
+        self.own_frame.pack(fill="both", expand=True)
         self.own_frame.columnconfigure(1, weight=1)
-        self.slot_vars, self.slot_boxes, self.slot_ids = {}, {}, {}
+        tk.Label(self.own_frame,
+                 text="Image 1 is the open document, or the bar's Reference image when attached. "
+                      "Choose which results GenFill brings back; the workflow's other settings stay as they are.",
+                 bg=p.chrome, fg=p.text_dim, font=f["small"], justify="left", anchor="w",
+                 wraplength=px(390)).grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, px(10)))
+        self.slot_vars, self.slot_boxes, self.slot_ids, self.slot_summaries = {}, {}, {}, {}
         for i, slot in enumerate(custom_workflow.SLOTS):
-            tk.Label(self.own_frame, text=custom_workflow.SLOT_LABELS[slot], bg=p.chrome, fg=p.text_faint,
-                     font=f["small"]).grid(row=i, column=0, sticky="w", padx=(0, px(8)), pady=px(2))
+            names = {"picture": "Image 1", "mask": "Selection", "reference": "Image 2",
+                     "prompt": "Your prompt", "result": "Main result"}
+            tk.Label(self.own_frame, text=names[slot], bg=p.chrome, fg=p.text_faint,
+                     font=f["small"]).grid(row=i + 1, column=0, sticky="w", padx=(0, px(8)), pady=px(2))
             v = self.slot_vars[slot] = tk.StringVar()
             cb = ttk.Combobox(self.own_frame, textvariable=v, style="PC.TCombobox", font=f["small"], state="readonly")
-            cb.grid(row=i, column=1, sticky="ew", pady=px(2))
+            cb.grid(row=i + 1, column=1, sticky="ew", pady=px(2))
             self.slot_boxes[slot] = cb
+            self.slot_summaries[slot] = tk.Label(self.own_frame, textvariable=v, bg=p.chrome, fg=p.text,
+                                                  font=f["small"], anchor="w")
         self.slot_boxes["result"].bind("<<ComboboxSelected>>", lambda _: self._refresh_extra_results())
-        option_row = len(custom_workflow.SLOTS)
+        option_row = len(custom_workflow.SLOTS) + 1
         self.keep_seeds_var = tk.BooleanVar(value=settings.custom_keep_seeds)
         self.native_size_var = tk.BooleanVar(value=settings.custom_native_size)
         for offset, (title, var) in enumerate((
@@ -138,7 +177,7 @@ class SettingsDialog(tk.Toplevel):
                            activebackground=p.chrome, activeforeground=p.text, selectcolor=p.field,
                            font=f["small"], bd=0, highlightthickness=0).grid(
                 row=option_row + offset, column=0, columnspan=2, sticky="w", pady=px(2))
-        tk.Label(self.own_frame, text="Additional outputs", bg=p.chrome, fg=p.text_faint,
+        tk.Label(self.own_frame, text="Other results", bg=p.chrome, fg=p.text_faint,
                  font=f["small"]).grid(row=option_row + 2, column=0, sticky="nw", pady=px(2))
         self.extra_results = tk.Listbox(self.own_frame, height=3, selectmode="multiple", exportselection=False,
                                         bg=p.field, fg=p.text, selectbackground=p.accent, bd=0,
@@ -148,8 +187,12 @@ class SettingsDialog(tk.Toplevel):
         tk.Label(self.own_frame, text="Used by Generate and Create. Everything else keeps the image model above.",
                  bg=p.chrome, fg=p.text_faint, font=f["small"], anchor="w").grid(
             row=option_row + 3, column=0, columnspan=2, sticky="w", pady=(px(2), px(4)))
+        workflow_actions = tk.Frame(self.workflow_window, bg=p.chrome, padx=px(16), pady=px(10))
+        workflow_actions.pack(fill="x")
+        theme.PillButton(workflow_actions, "Done", self._close_workflow_settings, p, f["button"], kind="primary",
+                         min_width=80).pack(side="right")
+        self.workflow_window.protocol("WM_DELETE_WINDOW", self._close_workflow_settings)
         self._show_workflow(settings.custom_slots)
-        row += 1
 
         heading("Quality", row); row += 1
         self.steps_label = tk.Label(fr, text=self._steps_text(), bg=p.chrome, fg=p.text_dim, font=f["small"])
@@ -184,13 +227,15 @@ class SettingsDialog(tk.Toplevel):
                        activeforeground=p.text, selectcolor=p.field, font=f["small"], bd=0,
                        highlightthickness=0).grid(row=row, column=0, columnspan=3, sticky="w"); row += 1
 
+        footer = tk.Frame(self, bg=p.chrome, padx=px(16), pady=px(10))
+        self.footer = footer
+        footer.pack(side="bottom", fill="x")
         self.msg = tk.StringVar()
-        tk.Label(fr, textvariable=self.msg, bg=p.chrome, fg=p.text_dim, font=f["small"], justify="left",
-                 anchor="w", wraplength=px(480)).grid(row=row, column=0, columnspan=3, sticky="ew", pady=(px(10), 0))
-        row += 1
-        tk.Frame(fr, bg=p.separator, height=1).grid(row=row, column=0, columnspan=3, sticky="ew", pady=px(10)); row += 1
-        bottom = tk.Frame(fr, bg=p.chrome)
-        bottom.grid(row=row, column=0, columnspan=3, sticky="ew")
+        tk.Label(footer, textvariable=self.msg, bg=p.chrome, fg=p.text_dim, font=f["small"], justify="left",
+                 anchor="w", wraplength=px(480)).pack(fill="x")
+        tk.Frame(footer, bg=p.separator, height=1).pack(fill="x", pady=px(8))
+        bottom = tk.Frame(footer, bg=p.chrome)
+        bottom.pack(fill="x")
         theme.PillButton(bottom, "Check compatibility", self.check_compat, p, f["small"], kind="quiet",
                          height=24).pack(side="left")
         theme.PillButton(bottom, "Undo PhotoCraft setup", self.undo_setup, p, f["small"], kind="quiet",
@@ -198,9 +243,11 @@ class SettingsDialog(tk.Toplevel):
         if on_restart:
             theme.PillButton(bottom, "Restart GenFill", lambda: (self.destroy(), on_restart()), p, f["small"],
                              kind="quiet", height=24).pack(side="left", padx=(px(4), 0))
-        theme.PillButton(bottom, "Save", self.save, p, f["button"], kind="primary", min_width=80).pack(side="right")
+        self.save_button = theme.PillButton(bottom, "Save", self.save, p, f["button"], kind="primary", min_width=80)
+        self.save_button.pack(side="right")
         theme.PillButton(bottom, "Cancel", self.destroy, p, f["button"], min_width=80).pack(side="right", padx=px(8))
         self.load_models()
+        self.after_idle(self._fit_height)
 
     # -- ComfyUI ---------------------------------------------------------------------------------
     def load_models(self) -> None:
@@ -387,25 +434,93 @@ class SettingsDialog(tk.Toplevel):
         self.msg.set("Pairing token copied. Paste it into the GenFill panel in Photoshop.")
 
     # -- your workflow ---------------------------------------------------------------------------
+    def _fit_height(self) -> None:
+        """Keep the action row on screen even when the settings content grows."""
+        if not self.winfo_exists():
+            return
+        self.update_idletasks()
+        height = min(self.content_frame.winfo_reqheight() + self.footer.winfo_reqheight() + px(40),
+                     self.winfo_screenheight() - px(100))
+        self.geometry(f"{max(self.winfo_width(), px(760))}x{height}")
+
+    def open_workflow_settings(self) -> None:
+        if self.own_wf is None:
+            return
+        self.workflow_window.deiconify()
+        self.workflow_window.lift()
+
+    def _close_workflow_settings(self) -> None:
+        self.workflow_summary.set(self._workflow_summary())
+        self.workflow_window.withdraw()
+
+    def _workflow_summary(self) -> str:
+        if self.own_wf is None:
+            return ""
+        outputs = 1 + len(self._extra_result_nodes())
+        return f"{outputs} output{'s' if outputs != 1 else ''} · " + (
+            "workflow size" if self.native_size_var.get() else "canvas size")
+
+    @staticmethod
+    def _workflow_option_label(wf: dict, slot: str, node_id: str | None) -> str:
+        if node_id is None:
+            return {"picture": "No image input", "mask": "No separate selection input",
+                    "reference": "No second image input", "prompt": "No prompt input",
+                    "result": "No result"}[slot]
+        node = wf[node_id]
+        title = str((node.get("_meta") or {}).get("title") or node["class_type"])
+        if slot == "picture":
+            return "Open image / bar Reference" if node["class_type"] == "LoadImage" else title
+        if slot == "mask":
+            return "Selection mask" if "LoadImage" in node["class_type"] else title
+        if slot == "reference":
+            return "Second image" if node["class_type"] == "LoadImage" else title
+        if slot == "prompt":
+            return ("Negative prompt" if "negative" in title.lower() else "Main prompt"
+                    if "positive" in title.lower() or "prompt" not in title.lower() else title)
+        source = node.get("inputs", {}).get("images")
+        if isinstance(source, list) and str(source[0]) in wf:
+            parent = wf[str(source[0])]
+            if "ColorMatch" in parent["class_type"]:
+                return "Color matched image"
+        return "Generated image" if node["class_type"] in ("PreviewImage", "SaveImage") else title
+
+    @classmethod
+    def _workflow_options(cls, wf: dict, slot: str, ids: list[str]) -> dict[str, str | None]:
+        empty = cls._workflow_option_label(wf, slot, None)
+        names = [cls._workflow_option_label(wf, slot, nid) for nid in ids]
+        return {empty: None, **{(f"{name} · node {nid}" if names.count(name) > 1 else name): nid
+                                for name, nid in zip(names, ids)}}
+
     def _show_workflow(self, slots: dict | None = None) -> None:
         """Show the workflow's name and, for each slot, which node GenFill uses (`slots`, else its guess)."""
         wf = self.own_wf
         if wf is None:
             self.own_name.set("None – GenFill's own")
-            self.own_frame.grid_remove()
+            self.workflow_button.grid_remove()
+            self.workflow_summary.set("")
+            self.workflow_window.withdraw()
             return
         self.own_name.set(Path(self.own_path).name)
         found = custom_workflow.detect(wf)
         chosen = {**found, **{k: v for k, v in (slots or {}).items() if v is None or v in wf}} if slots else found
         options = custom_workflow.candidates(wf)
+        options["mask"] = [nid for nid in options["mask"] if nid != chosen.get("picture")]
+        options["reference"] = [nid for nid in options["reference"] if nid != chosen.get("picture")]
         for slot in custom_workflow.SLOTS:
-            ids = {custom_workflow.label(wf, None): None,
-                   **{custom_workflow.label(wf, i): i for i in options[slot]}}
+            ids = self._workflow_options(wf, slot, options[slot])
             self.slot_ids[slot] = ids
             self.slot_boxes[slot].configure(values=list(ids))
-            self.slot_vars[slot].set(custom_workflow.label(wf, chosen.get(slot)))
+            self.slot_vars[slot].set(next((name for name, nid in ids.items() if nid == chosen.get(slot)), next(iter(ids))))
+            if not options[slot] or (len(options[slot]) == 1 and slot in ("picture", "prompt", "result")):
+                self.slot_boxes[slot].grid_remove()
+                self.slot_summaries[slot].grid(row=custom_workflow.SLOTS.index(slot) + 1, column=1,
+                                                sticky="ew", pady=px(2))
+            else:
+                self.slot_summaries[slot].grid_remove()
+                self.slot_boxes[slot].grid()
         self._refresh_extra_results(self.work.custom_result_nodes)
-        self.own_frame.grid()
+        self.workflow_button.grid()
+        self.workflow_summary.set(self._workflow_summary())
 
     def _refresh_extra_results(self, selected: list[str] | None = None) -> None:
         """Keep extra output choices in sync when the main Result changes."""
@@ -414,8 +529,9 @@ class SettingsDialog(tk.Toplevel):
         primary = self._slots().get("result")
         self.extra_results.delete(0, "end")
         self.extra_result_ids = [n for n in custom_workflow.candidates(wf)["result"] if n != primary]
+        labels = SettingsDialog._workflow_options(wf, "result", custom_workflow.candidates(wf)["result"])
         for i, nid in enumerate(self.extra_result_ids):
-            self.extra_results.insert("end", custom_workflow.label(wf, nid))
+            self.extra_results.insert("end", next(name for name, value in labels.items() if value == nid))
             if nid in selected:
                 self.extra_results.selection_set(i)
 

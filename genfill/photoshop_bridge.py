@@ -40,16 +40,20 @@ class EditorSession:
         self._seen = 0.0
         self._document = None
         self._width = self._height = 0
+        self._selection = False
 
     def state(self) -> dict:
         with self._lock:
-            return {"connected": time.monotonic() - self._seen < 3,
-                    "document": self._document, "width": self._width, "height": self._height}
+            return {"connected": time.monotonic() - self._seen < 3 or bool(self._waiting),
+                    "document": self._document, "width": self._width, "height": self._height,
+                    "selection": self._selection,
+                    "stage": next((wait[2] for wait in self._waiting.values() if wait[2]), "")}
 
-    def next(self, document=None, width=0, height=0) -> dict | None:
+    def next(self, document=None, width=0, height=0, selection=False) -> dict | None:
         with self._lock:
             self._seen = time.monotonic()
             self._document, self._width, self._height = document, width, height
+            self._selection = bool(selection)
             return self._pending.popleft() if self._pending else None
 
     def request(self, command: dict, timeout: float = 30, cancel=None) -> dict:
@@ -59,7 +63,7 @@ class EditorSession:
                 raise UserFacingError("Open the GenFill panel in Photoshop and pair it with the companion.")
             self._sequence += 1
             command = {**command, "id": self._sequence}
-            self._waiting[self._sequence] = [event, None]
+            self._waiting[self._sequence] = [event, None, "waiting for Photoshop"]
             self._pending.append(command)
         deadline = time.monotonic() + timeout
         while not event.wait(0.1):
@@ -68,11 +72,12 @@ class EditorSession:
             if time.monotonic() >= deadline:
                 break
         with self._lock:
-            _, reply = self._waiting.pop(command["id"], (None, None))
+            _, reply, stage = self._waiting.pop(command["id"], (None, None, ""))
             if reply is None:
                 self._pending = deque(c for c in self._pending if c["id"] != command["id"])
         if reply is None:
-            raise UserFacingError("Photoshop did not respond. Check that its GenFill panel is open and paired.")
+            raise UserFacingError(f"Photoshop did not respond ({stage or 'no reply'}). "
+                                  "Check its GenFill panel for an error.")
         if reply.get("error"):
             raise UserFacingError(str(reply["error"]))
         return reply.get("result") or {}
@@ -84,9 +89,15 @@ class EditorSession:
                 waiting[1] = message
                 waiting[0].set()
 
+    def progress(self, message: dict) -> None:
+        with self._lock:
+            waiting = self._waiting.get(message.get("id"))
+            if waiting is not None and isinstance(message.get("stage"), str):
+                waiting[2] = message["stage"][:80]
+
 
 def decode_source(request: dict) -> Image.Image:
-    """Read an 8-bit Photoshop RGB/RGBA buffer or a PNG sent by another client."""
+    """Read an 8-bit Photoshop buffer or a PNG/JPEG sent by the panel."""
     encoded = request.get("image")
     if not isinstance(encoded, str):
         raise ValueError("Send an image from an open Photoshop document.")
@@ -107,11 +118,12 @@ def decode_source(request: dict) -> Image.Image:
         image = Image.open(io.BytesIO(data))
         image.verify()
         image = Image.open(io.BytesIO(data))
-        if image.format != "PNG" or max(image.size) > MAX_SIDE or image.width * image.height > MAX_PIXELS:
-            raise ValueError("Send a PNG no larger than 8192 pixels per side and 20 megapixels.")
+        expected = "JPEG" if request.get("image_format") == "jpeg" else "PNG"
+        if image.format != expected or max(image.size) > MAX_SIDE or image.width * image.height > MAX_PIXELS:
+            raise ValueError("Send a supported image no larger than 8192 pixels per side and 20 megapixels.")
         return image.convert("RGBA")
     except OSError as exc:
-        raise ValueError("The image is not a valid PNG.") from exc
+        raise ValueError("The image is not a valid PNG or JPEG.") from exc
 
 
 def generate_images(request: dict, settings: Settings, status=None, progress=None, cancel=None) -> list[Image.Image]:
@@ -175,12 +187,13 @@ def create_server(settings_provider: Callable[[], Settings], generator=generate_
                     except ValueError:
                         return 0
                 document = number("document") or None
-                self._reply(200, {"command": self.server.editor.next(document, number("width"), number("height"))})
+                self._reply(200, {"command": self.server.editor.next(document, number("width"), number("height"),
+                                                                      bool(number("selection")))})
             else:
                 self._reply(404, {"error": "Unknown endpoint."})
 
         def do_POST(self):
-            if self.path not in ("/v1/generate", "/v1/editor/reply"):
+            if self.path not in ("/v1/generate", "/v1/editor/reply", "/v1/editor/progress"):
                 self._reply(404, {"error": "Unknown endpoint."})
                 return
             settings = settings_provider()
@@ -198,6 +211,12 @@ def create_server(settings_provider: Callable[[], Settings], generator=generate_
                     if type(request.get("id")) is not int:
                         raise ValueError("Missing command ID.")
                     self.server.editor.reply(request)
+                    self._reply(200, {"ok": True})
+                    return
+                if self.path == "/v1/editor/progress":
+                    if type(request.get("id")) is not int:
+                        raise ValueError("Missing command ID.")
+                    self.server.editor.progress(request)
                     self._reply(200, {"ok": True})
                     return
                 if request.get("mode") not in ("edit", "create"):

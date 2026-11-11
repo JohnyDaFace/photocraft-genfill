@@ -244,12 +244,13 @@ through **⋯ › Settings… › Install Photoshop plugin**.
 For Photoshop, open the **GenFill** panel from Photoshop's Plugins menu. In companion Settings, click
 **Copy pairing token**, paste it into the panel's Connection settings, and save it. The token stays in Photoshop's
 plugin storage; the companion listens only on this computer. Keep the panel open, then use the **companion bar** for
-the prompt, styles, reference photo, result count, size, Generate, and choosing a result. The bar follows the editor
-you last clicked (shown as **PS** or **PC** beside the prompt). With a Photoshop document open, Generate edits the
-whole image; with no document open, Create makes a new image. A result matching the Photoshop document's dimensions
-is added as a layer; a different-sized result opens at its native size as a new document. Photoshop support currently
-covers whole-image edits and Create; the PhotoCraft bar retains its full selection and tool set. Keep the companion
-running while using Photoshop.
+the prompt, styles, reference photo, result count, size, and tools. The bar follows the editor you last clicked
+(shown as **PS** or **PC** beside the prompt). With a Photoshop document open, the bar shows **Select**, **Remove**,
+**Fix**, **Resize**, **Create**, and **Generate**; with a selection, it offers the selection-aware actions. With no
+document open, Create makes a new image. Results matching the Photoshop document's dimensions become new layers;
+different-sized results, including Expand and Upscale, open as new documents. Remove background places a cutout
+layer and hides the original visible layers, which can be shown again in Photoshop. Keep the companion running and
+its Photoshop panel open while using these tools.
 
 For PhotoCraft:
 
@@ -533,13 +534,15 @@ After you save it, the workflow appears in the **Image model** dropdown as **Wor
 multiple workflows and switch between them there. **Clear** selects GenFill's built-in image model; saved workflows
 remain in the dropdown. GenFill uses the selected custom workflow for Generate and Create.
 
-GenFill then shows what it found in the workflow, and you can change any of it:
+Click **Workflow settings…** to review what GenFill found and change any mapping. This opens a separate
+window; the main Settings window keeps Save visible at the bottom and scrolls if needed. A single detected
+input is shown as a plain value. If a workflow has several possible inputs or results, use its dropdown:
 
 | Part | What GenFill puts there | Found as |
 |---|---|---|
-| Picture | the picture (or the part around your selection) | a Load Image node |
+| Picture | the open picture; with one image input, an attached bar Reference takes its place (and supplies image 1 for Create) | a Load Image node |
 | Selection (mask) | your selection, white where to draw | a Load Image Mask node, or a Load Image titled "mask" |
-| Reference picture | the picture from **Reference…** | a second Load Image, or one titled "reference" |
+| Reference picture | an additional image for Generate, or the bar's second Create image | a second Load Image, or one titled "reference" |
 | Prompt | what you type (with the style or angle that's on) | the text box that reaches the sampler's positive input, never the negative one |
 | Result | the main picture brought back | the last Save Image (or Preview Image) node |
 

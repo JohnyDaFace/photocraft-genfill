@@ -60,17 +60,28 @@ async function checkConnection() {
   }
 }
 
-async function readComposite(doc) {
-  return photoshop.core.executeAsModal(async () => {
-    const capture = await photoshop.imaging.getPixels({
+async function readComposite(doc, onPixels) {
+  const capture = await photoshop.core.executeAsModal(() => photoshop.imaging.getPixels({
       documentID: doc.id,
       sourceBounds: { left: 0, top: 0, right: doc.width, bottom: doc.height },
       colorSpace: 'RGB', colorProfile: 'sRGB IEC61966-2.1', componentSize: 8, applyAlpha: false
-    });
+    }), { commandName: 'Read image for GenFill' });
     try {
+      if (onPixels) await onPixels('Reading Photoshop pixel buffer');
       const image = capture.imageData;
-      const pixels = await image.getData({ chunky: true, fullRange: true });
       if (![3, 4].includes(image.components)) throw new Error('Photoshop returned unsupported pixel channels.');
+      const pixels = await image.getData({ chunky: true, fullRange: true });
+      if (onPixels) await onPixels('Encoding Photoshop pixel buffer');
+      if (image.components === 3 && image.width === doc.width && image.height === doc.height &&
+          capture.sourceBounds.left === 0 && capture.sourceBounds.top === 0) {
+        return { image: bytesToBase64(pixels), image_components: 3,
+                 image_format: 'raw', image_width: doc.width, image_height: doc.height };
+      }
+      if (image.components === 4 && image.width === doc.width && image.height === doc.height &&
+          capture.sourceBounds.left === 0 && capture.sourceBounds.top === 0) {
+        return { image: bytesToBase64(pixels), image_components: 4,
+                 image_format: 'raw', image_width: doc.width, image_height: doc.height };
+      }
       const full = new Uint8Array(doc.width * doc.height * 4);
       const left = capture.sourceBounds.left, top = capture.sourceBounds.top;
       for (let y = 0; y < image.height; y++) for (let x = 0; x < image.width; x++) {
@@ -84,10 +95,39 @@ async function readComposite(doc) {
       return { image: bytesToBase64(full), image_width: doc.width, image_height: doc.height,
                image_components: 4, image_format: 'raw' };
     } finally { capture.imageData.dispose(); }
-  }, { commandName: 'Read image for GenFill' });
 }
 
-async function placeResult(result, sourceDocumentId, index) {
+async function readSelection(doc) {
+  const bounds = doc.selection && doc.selection.bounds;
+  if (!bounds) return {};
+  const region = await photoshop.core.executeAsModal(() => photoshop.imaging.getSelection({ documentID: doc.id,
+    sourceBounds: { left: 0, top: 0, right: doc.width, bottom: doc.height } }),
+    { commandName: 'Read selection for GenFill' });
+  try {
+    const pixels = await region.imageData.getData({ chunky: true });
+    return { selection_bounds: [bounds.left, bounds.top, bounds.right, bounds.bottom],
+      selection_mask: bytesToBase64(pixels), selection_width: region.imageData.width,
+      selection_height: region.imageData.height, selection_left: region.sourceBounds.left,
+      selection_top: region.sourceBounds.top };
+  } finally { region.imageData.dispose(); }
+}
+
+async function placeSelection(command, doc) {
+  if (!doc || doc.id !== command.document) throw new Error('The Photoshop document changed. Select again.');
+  const pixels = base64ToBytes(command.mask);
+  if (pixels.length !== doc.width * doc.height) throw new Error('Selection mask has the wrong size.');
+  await photoshop.core.executeAsModal(async () => {
+    const data = await photoshop.imaging.createImageDataFromBuffer(pixels, {
+      width: doc.width, height: doc.height, components: 1, colorSpace: 'Grayscale',
+      colorProfile: 'Gray Gamma 2.2', chunky: false });
+    try { await photoshop.imaging.putSelection({ documentID: doc.id, imageData: data, replace: true,
+      commandName: 'GenFill selection' }); }
+    finally { data.dispose(); }
+  }, { commandName: 'GenFill selection' });
+  return { message: 'Selected in Photoshop.' };
+}
+
+async function placeResult(result, sourceDocumentId, index, hideOriginal = false) {
   if (!result || !Number.isSafeInteger(result.width) || !Number.isSafeInteger(result.height) || result.width < 1 || result.height < 1) {
     throw new Error('Invalid result dimensions.');
   }
@@ -104,8 +144,10 @@ async function placeResult(result, sourceDocumentId, index) {
         try {
           const layers = opened.layers;
           if (!layers.length) throw new Error('Result image has no layer.');
+          const originals = hideOriginal ? Array.from(target.layers).filter(layer => layer.visible) : [];
           const copies = await opened.duplicateLayers([layers[0]], target);
           if (copies[0]) copies[0].name = `GenFill ${index + 1}`;
+          for (const layer of originals) layer.visible = false;
           photoshop.app.activeDocument = target;
         } finally { await opened.closeWithoutSaving(); }
       } else {
@@ -122,6 +164,15 @@ async function placeResult(result, sourceDocumentId, index) {
   }
 }
 
+async function reportProgress(id, stage, savedToken) {
+  setMessage(stage);
+  try {
+    await fetch(`${SERVER}/v1/editor/progress`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-GenFill-Token': savedToken },
+      body: JSON.stringify({ id, stage }) });
+  } catch (_) { /* The capture or placement reply will report the real error. */ }
+}
+
 async function pollBar() {
   if (busy) return;
   const savedToken = await token();
@@ -129,7 +180,8 @@ async function pollBar() {
   busy = true;
   try {
     const doc = photoshop.app.activeDocument;
-    const params = `document=${doc ? doc.id : 0}&width=${doc ? doc.width : 0}&height=${doc ? doc.height : 0}`;
+    const selected = !!(doc && doc.selection && doc.selection.bounds);
+    const params = `document=${doc ? doc.id : 0}&width=${doc ? doc.width : 0}&height=${doc ? doc.height : 0}&selection=${selected ? 1 : 0}`;
     const response = await fetch(`${SERVER}/v1/editor/next?${params}`, {
       headers: { 'X-GenFill-Token': savedToken }
     });
@@ -142,9 +194,17 @@ async function pollBar() {
     try {
       if (command.type === 'capture') {
         if (!doc) throw new Error('Open a Photoshop document first.');
-        reply = { result: { document: doc.id, ...await readComposite(doc) } };
+        await reportProgress(command.id, 'Reading Photoshop pixels', savedToken);
+        reply = { result: { document: doc.id,
+          ...await readComposite(doc, stage => reportProgress(command.id, stage, savedToken)),
+          ...await readSelection(doc) } };
+        await reportProgress(command.id, 'Sending the image to the companion', savedToken);
+      } else if (command.type === 'selection') {
+        reply = { result: await placeSelection(command, doc) };
       } else if (command.type === 'place') {
-        reply = { result: await placeResult(command.image, command.document, command.index || 0) };
+        await reportProgress(command.id, 'Placing result in Photoshop', savedToken);
+        reply = { result: await placeResult(command.image, command.document, command.index || 0,
+                                           !!command.hide_original) };
       } else throw new Error('Unknown companion command.');
     } catch (error) { reply = { error: String(error.message || error) }; setMessage(reply.error, true); }
     const sent = await fetch(`${SERVER}/v1/editor/reply`, { method: 'POST',

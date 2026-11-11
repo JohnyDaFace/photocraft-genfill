@@ -175,6 +175,48 @@ def test_create_runs_your_workflow(own):
     assert any("your workflow" in s for s in status)
 
 
+def test_create_reference_uses_first_image_input_of_custom_workflow(own):
+    class CaptureComfy(OwnComfy):
+        def upload(self, img, name):
+            self.uploads.append((name, img.copy()))
+            return "genfill/" + name
+
+    own.custom_native_size = True
+    reference = Image.new("RGB", (120, 80), "red")
+    job = Job(Image.new("RGBA", (200, 100), "white"), None, None, "restyle",
+              reference=reference, create=True, custom=True)
+    comfy = CaptureComfy()
+    _candidates(job, own, lambda _: None, lambda _: None, threading.Event(), comfy, 1)
+    assert comfy.wfs[0]["20"]["inputs"]["image"] == "genfill/genfill_src.png"
+    assert len(comfy.uploads) == 1
+    assert comfy.uploads[0][1].size == (120, 80)
+    assert comfy.uploads[0][1].getpixel((0, 0)) == (255, 0, 0)
+
+
+def test_custom_create_rejects_second_image_without_second_input(own):
+    job = Job(Image.new("RGBA", (200, 100), "white"), None, None, "use both images",
+              reference=Image.new("RGB", (120, 80), "red"), create=True, custom=True,
+              second_reference=Image.new("RGB", (120, 80), "blue"))
+    with pytest.raises(UserFacingError, match="only one image input"):
+        _candidates(job, own, lambda _: None, lambda _: None, threading.Event(), OwnComfy(), 1)
+
+
+def test_generate_reference_uses_first_input_when_workflow_has_only_one(own):
+    class CaptureComfy(OwnComfy):
+        def upload(self, img, name):
+            self.uploads.append((name, img.copy()))
+            return "genfill/" + name
+
+    own.custom_native_size = True
+    job = Job(Image.new("RGBA", (200, 100), "white"), None, None, "restyle",
+              reference=Image.new("RGB", (120, 80), "red"), custom=True)
+    comfy = CaptureComfy()
+    _candidates(job, own, lambda _: None, lambda _: None, threading.Event(), comfy, 1)
+    assert len(comfy.uploads) == 1
+    assert comfy.uploads[0][1].size == (120, 80)
+    assert comfy.uploads[0][1].getpixel((0, 0)) == (255, 0, 0)
+
+
 def test_a_fill_with_your_workflow_changes_only_the_selection(own):
     comfy = OwnComfy((255, 0, 0))
     base = Image.new("RGBA", (100, 100), (0, 0, 255, 255))
@@ -301,6 +343,22 @@ def test_changing_main_result_refreshes_additional_output_choices():
     SettingsDialog._refresh_extra_results(state)
     assert state.extra_result_ids == ["matched", "third"]
     assert state._extra_result_nodes() == ["third"]
+
+
+def test_workflow_settings_use_image_roles_instead_of_node_numbers():
+    from genfill.settings_dialog import SettingsDialog
+
+    wf = {
+        "168": {"class_type": "LoadImage", "inputs": {"image": "old.jpg"}},
+        "173": {"class_type": "PreviewImage", "inputs": {"images": ["172", 0]}},
+        "188": {"class_type": "PreviewImage", "inputs": {"images": ["187", 0]}},
+        "187": {"class_type": "ColorMatchV2", "inputs": {"image_target": ["172", 0]}},
+        "172": {"class_type": "VAEDecode", "inputs": {}},
+    }
+    assert SettingsDialog._workflow_option_label(wf, "picture", "168") == "Open image / bar Reference"
+    assert SettingsDialog._workflow_option_label(wf, "result", "173") == "Generated image"
+    assert SettingsDialog._workflow_option_label(wf, "result", "188") == "Color matched image"
+    assert SettingsDialog._workflow_options(wf, "result", ["173", "188"])["Color matched image"] == "188"
 
 
 def test_saved_workflows_have_separate_copies_and_settings_entries(tmp_path):
