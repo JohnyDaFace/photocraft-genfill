@@ -16,6 +16,8 @@ NAME = {"win32": "GenFill-for-PhotoCraft", "darwin": "GenFill for PhotoCraft"}.g
 
 def main() -> None:
     subprocess.run([sys.executable, str(ROOT / "tools" / "make_icon.py")], check=True)
+    from genfill.photoshop_install import build_package
+    plugin = build_package(ROOT, ROOT / "build" / "GenFill-Photoshop.ccx")
     icon = ROOT / "assets" / ("icon.ico" if sys.platform == "win32" else "icon.png")
     args = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed",
             "--name", NAME, "--icon", str(icon), "--paths", str(ROOT),
@@ -24,6 +26,7 @@ def main() -> None:
             "--add-data", f"{ROOT / 'assets' / 'icon.png'}{';' if sys.platform == 'win32' else ':'}assets",
             "--add-data", f"{ROOT / 'assets' / 'styles'}{';' if sys.platform == 'win32' else ':'}assets/styles",
             "--add-data", f"{ROOT / 'assets' / 'icons'}{';' if sys.platform == 'win32' else ':'}assets/icons"]
+    args += ["--add-data", f"{plugin}{';' if sys.platform == 'win32' else ':'}photoshop"]
     if sys.platform != "darwin":
         args.append("--onefile")  # a .app bundle is already a single thing to download on macOS
     if sys.platform.startswith("linux"):

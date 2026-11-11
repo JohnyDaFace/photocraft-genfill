@@ -138,7 +138,9 @@ def test_restart_frees_the_port_and_starts_a_new_bar(monkeypatch):
     monkeypatch.setattr(app_mod.subprocess, "Popen", lambda args, **kw: started.append(args))
     monkeypatch.setattr(sys, "argv", ["GenFill.pyw", app_mod.autostart.BACKGROUND])
     bar = SimpleNamespace(server=SimpleNamespace(close=lambda: events.append("closed")),
+                          photoshop_server=SimpleNamespace(shutdown=lambda: events.append("photoshop stopped"),
+                                                           server_close=lambda: events.append("photoshop closed")),
                           quit=lambda: events.append("quit"), say=lambda *a, **k: None)
     App.restart(bar)
-    assert events == ["closed", "quit"]
+    assert events == ["closed", "photoshop stopped", "photoshop closed", "quit"]
     assert started == [[sys.executable, "GenFill.pyw"]]  # shows itself, not a hidden Windows start

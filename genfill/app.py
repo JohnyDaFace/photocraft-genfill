@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import queue
 import socket
+import secrets
 import subprocess
 import sys
 import threading
@@ -24,6 +25,7 @@ from .comfy import ComfyClient, ComfyError
 from .dpi import px
 from .families import family
 from .photocraft_client import PhotoCraftClient, PhotoCraftError
+from . import photoshop_bridge, photoshop_install
 from .photoshoot import SHOT_COUNTS, reshoot, run_photoshoot
 from .picker import Picker
 from .style_panel import StylePanel
@@ -206,7 +208,16 @@ class App:
         self.visible = True
         self.photocraft_seen = False  # connected at least once since shown (so a close can hide it)
         self._photocraft_down = 0     # failed checks in a row
+        had_settings = SETTINGS_FILE.exists()
         self.settings = Settings.load()
+        if had_settings and not self.settings.setup_choice:
+            self.settings.setup_choice = "photocraft"  # existing users already chose this host in earlier releases
+            self.settings.save()
+        self.first_run = not self.settings.setup_choice
+        if not self.settings.photoshop_token:
+            self.settings.photoshop_token = secrets.token_urlsafe(24)
+            self.settings.save()
+        self.photoshop_server = None
         if self.settings.create_second_reference:
             self.settings.create_second_reference = ""  # the main reference never survives a restart
             self.settings.save()
@@ -224,7 +235,8 @@ class App:
         self.reference: str | None = None   # path of the optional reference picture
         self.update_info: tuple[str, str] | None = None  # (version, url) when a newer release exists
         self.conn = {"PhotoCraft": (UNKNOWN, "checking…"), "ComfyUI": (UNKNOWN, "checking…"),
-                     "Select (SAM 3)": (UNKNOWN, "checking…")}
+                     "Select (SAM 3)": (UNKNOWN, "checking…"),
+                     "Photoshop": (UNKNOWN, "checking…")}
         self.last_message = ""
         self._prompt_text = ""
         self._progress_after = None
@@ -257,6 +269,8 @@ class App:
         self.root.after(100, self.poll)
         threading.Thread(target=self.check_connections, daemon=True).start()
         threading.Thread(target=self.watch, daemon=True).start()
+        if self.first_run:
+            root.after(200, self.first_run_setup)
 
     # -- layout --------------------------------------------------------------------------------
     def build(self) -> None:
@@ -807,7 +821,9 @@ class App:
     # -- background work -----------------------------------------------------------------------
     def check_connections(self) -> None:
         msgs = []
-        if not all(setup_env.status(self.settings.port).values()):
+        if self.settings.setup_choice == "photoshop":
+            self.conn["PhotoCraft"] = (None, "not selected")
+        elif not all(setup_env.status(self.settings.port).values()):
             self.conn["PhotoCraft"] = (False, "not set up")
             msgs.append("PhotoCraft connection isn't set up yet: ⋯ › PhotoCraft connection…")
         else:
@@ -863,6 +879,8 @@ class App:
         pc, n, last, last_layer = None, 0, None, None
         while True:
             time.sleep(0.8)
+            if self.settings.setup_choice == "photoshop":
+                continue
             if self.busy:
                 continue
             try:
@@ -1101,7 +1119,8 @@ class App:
                     if value:
                         self.say(value, BAD)
                     else:
-                        self.say("Connected to PhotoCraft and ComfyUI.", OK, hide_after=2500)
+                        self.say("Connected to ComfyUI and Photoshop bridge." if self.settings.setup_choice == "photoshop"
+                                 else "Connected to PhotoCraft and ComfyUI.", OK, hide_after=2500)
                 elif kind == "mode":
                     self.set_mode(value)
                 elif kind == "photocraft":
@@ -1248,12 +1267,60 @@ class App:
     # -- other windows ---------------------------------------------------------------------------
     def setup(self) -> None:
         if all(setup_env.status(self.settings.port).values()):
+            if self.settings.setup_choice == "photoshop":
+                self.settings.setup_choice = "both"
+                self.settings.save()
             messagebox.showinfo(TITLE, "Already set up. If PhotoCraft still isn't connected: "
                                 + setup_env.RESTART_HINT.replace("Now ", "", 1), parent=self.root)
             return
         setup_env.install(self.settings.port)
+        self.settings.setup_choice = "both" if self.settings.setup_choice == "photoshop" else "photocraft"
+        self.settings.save()
         messagebox.showinfo(TITLE, "Done. " + setup_env.RESTART_HINT, parent=self.root)
         threading.Thread(target=self.check_connections, daemon=True).start()
+
+    def first_run_setup(self) -> None:
+        """Let a new user choose which editor connections to set up."""
+        if self.settings.setup_choice:
+            return
+        dialog = tk.Toplevel(self.root, bg=self.p.chrome, padx=px(20), pady=px(18))
+        dialog.title("Set up GenFill")
+        dialog.transient(self.root)
+        dialog.attributes("-topmost", True)
+        dialog.resizable(False, False)
+        tk.Label(dialog, text="Where will you use GenFill?", bg=self.p.chrome, fg=self.p.text,
+                 font=self.fonts["button"]).pack(anchor="w", pady=(0, px(6)))
+        tk.Label(dialog, text="Choose an editor. You can install the other connection later in Settings.",
+                 bg=self.p.chrome, fg=self.p.text_dim, font=self.fonts["small"],
+                 wraplength=px(340), justify="left").pack(anchor="w", pady=(0, px(14)))
+
+        def choose(choice: str) -> None:
+            dialog.destroy()
+            self.settings.setup_choice = choice
+            if choice in ("photoshop", "both"):
+                self.settings.follow_photocraft = False
+            self.settings.save()
+            if choice in ("photocraft", "both"):
+                try:
+                    setup_env.install(self.settings.port)
+                except Exception as exc:
+                    messagebox.showerror(TITLE, f"PhotoCraft setup failed: {exc}", parent=self.root)
+            if choice in ("photoshop", "both"):
+                try:
+                    photoshop_install.open_installer()
+                except (OSError, FileNotFoundError) as exc:
+                    messagebox.showerror(TITLE, f"Photoshop setup failed: {exc}", parent=self.root)
+            if choice in ("photocraft", "both"):
+                self.say(setup_env.RESTART_HINT, OK, hide_after=10000)
+            threading.Thread(target=self.check_connections, daemon=True).start()
+
+        choices = (("PhotoCraft", "photocraft"), ("Photoshop", "photoshop"), ("Both", "both")) \
+            if sys.platform in ("win32", "darwin") else (("PhotoCraft", "photocraft"),)
+        for text, choice in choices:
+            theme.PillButton(dialog, text, lambda c=choice: choose(c), self.p, self.fonts["body"],
+                             min_width=px(130)).pack(fill="x", pady=px(3))
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        dialog.grab_set()
 
     def open_settings(self) -> None:
         def saved(s: Settings) -> None:
@@ -1313,12 +1380,19 @@ class App:
 
     def quit(self) -> None:
         self.cancel.set()
+        if self.photoshop_server is not None:
+            self.photoshop_server.shutdown()
+            self.photoshop_server.server_close()
         self.root.destroy()
 
     def restart(self) -> None:
         """Close this bar and start a fresh one (it picks up new settings and code)."""
         if self.server is not None:
             self.server.close()  # free the one-bar port so the new bar can claim it
+        if self.photoshop_server is not None:
+            self.photoshop_server.shutdown()
+            self.photoshop_server.server_close()
+            self.photoshop_server = None
         args = [a for a in sys.argv if a != autostart.BACKGROUND]
         try:
             subprocess.Popen([sys.executable, *args], cwd=os.getcwd(), close_fds=True)
@@ -1368,6 +1442,13 @@ def main() -> None:
     dpi.enable()  # sharp text at 125% / 150% / 200% display scaling (before the first window)
     root = tk.Tk()
     app = App(root, background=autostart.BACKGROUND in sys.argv)
+    try:
+        app.photoshop_server = photoshop_bridge.create_server(lambda: Settings.load())
+        threading.Thread(target=app.photoshop_server.serve_forever, daemon=True).start()
+        app.conn["Photoshop"] = (True, "local bridge ready")
+    except OSError:
+        app.conn["Photoshop"] = (False, "local bridge port already in use")
+        app.events.put(("notice", "Photoshop connection port is already in use."))
     app.server = server
     threading.Thread(target=_listen, args=(server, app.events), daemon=True).start()
     root.mainloop()

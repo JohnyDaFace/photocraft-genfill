@@ -1,4 +1,4 @@
-# Generative Fill for PhotoCraft
+# GenFill Companion for PhotoCraft and Photoshop
 
 A small always-on-top bar that adds AI tools to [PhotoCraft](https://github.com/storytold/photocraft),
 running entirely on your own computer through [ComfyUI](https://github.com/comfyanonymous/ComfyUI) and an
@@ -236,8 +236,24 @@ Download the file for your computer from the **Releases** page of this repositor
 
 ## First time
 
-1. Open the app, click **⋯** at the right end of the bar, then **PhotoCraft connection…**. This lets PhotoCraft
-   accept commands from the bar (it sets a few per-user settings; nothing is installed into PhotoCraft).
+On a new installation, choose **PhotoCraft**, **Photoshop**, or **Both** on the first-run screen. This is one
+companion app and one ComfyUI connection. Photoshop requires its small UXP panel, which the companion opens for
+installation through Adobe Creative Cloud. Confirm Adobe's install prompt. Existing users can install it later
+through **⋯ › Settings… › Install Photoshop plugin**.
+
+For Photoshop, open the **GenFill** panel from Photoshop's Plugins menu. In companion Settings, click
+**Copy pairing token**, paste it into the panel's Connection settings, and save it. The token stays in Photoshop's
+plugin storage; the companion listens only on this computer. Open a document, choose **Edit active document**, type
+a prompt and Generate. **Create new image** starts without a document. The panel shows every returned result; click
+**Place** to add one as a layer when its dimensions match the source document, or open it as a new document at its
+native size. Photoshop support currently covers whole-image edits and Create; the PhotoCraft bar retains its full
+selection and tool set. Keep the companion running while using Photoshop.
+
+For PhotoCraft:
+
+1. Choosing **PhotoCraft** or **Both** sets up the PhotoCraft connection. If you chose Photoshop earlier, use
+   **⋯ › PhotoCraft connection…** to add PhotoCraft later. This sets a few per-user environment variables;
+   nothing is installed into PhotoCraft.
 2. Save your work, then quit PhotoCraft completely and start it again:
    - Windows: also quit the ArtCraft Launcher, including its tray icon.
    - Mac: PhotoCraft › Quit (Cmd+Q).

@@ -9,7 +9,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from . import __version__, custom_workflow, setup_env, theme
+from . import __version__, custom_workflow, photoshop_install, setup_env, theme
 from .comfy import MODEL_SLOTS, ComfyClient, ComfyError
 from .families import FAMILIES, family
 from .dpi import px
@@ -164,6 +164,18 @@ class SettingsDialog(tk.Toplevel):
         row += 1
         tk.Label(fr, text=f"Found: {find_photocraft_cli()}", bg=p.chrome, fg=p.text_faint, font=f["small"]).grid(
             row=row, column=1, columnspan=2, sticky="w"); row += 1
+
+        heading("Photoshop", row); row += 1
+        tk.Label(fr, text="Install the Photoshop plugin through Adobe Creative Cloud, then copy this pairing token into its panel.",
+                 bg=p.chrome, fg=p.text_faint, font=f["small"], anchor="w", justify="left",
+                 wraplength=px(470)).grid(row=row, column=0, columnspan=3, sticky="w", pady=px(2)); row += 1
+        photoshop_buttons = tk.Frame(fr, bg=p.chrome)
+        photoshop_buttons.grid(row=row, column=0, columnspan=3, sticky="w", pady=px(3))
+        theme.PillButton(photoshop_buttons, "Install Photoshop plugin", self.install_photoshop, p, f["small"],
+                         height=24).pack(side="left")
+        theme.PillButton(photoshop_buttons, "Copy pairing token", self.copy_photoshop_token, p, f["small"],
+                         height=24).pack(side="left", padx=(px(8), 0))
+        row += 1
 
         heading("Updates", row); row += 1
         self.check_updates = tk.BooleanVar(value=settings.check_updates)
@@ -361,6 +373,18 @@ class SettingsDialog(tk.Toplevel):
 
     def test_comfy(self) -> None:
         self.load_models()
+
+    def install_photoshop(self) -> None:
+        try:
+            photoshop_install.open_installer()
+            self.msg.set("Adobe Creative Cloud will ask you to install the Photoshop plugin.")
+        except (OSError, FileNotFoundError) as exc:
+            self.msg.set(str(exc))
+
+    def copy_photoshop_token(self) -> None:
+        self.clipboard_clear()
+        self.clipboard_append(self.work.photoshop_token)
+        self.msg.set("Pairing token copied. Paste it into the GenFill panel in Photoshop.")
 
     # -- your workflow ---------------------------------------------------------------------------
     def _show_workflow(self, slots: dict | None = None) -> None:

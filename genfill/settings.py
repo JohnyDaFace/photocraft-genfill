@@ -97,6 +97,8 @@ class Settings:
     custom_keep_seeds: bool = False  # leave numeric seed fields from the selected workflow alone
     custom_native_size: bool = False  # keep the workflow's generated pixels and dimensions
     custom_result_nodes: list[str] = field(default_factory=list)  # additional output nodes to collect per run
+    photoshop_token: str = ""  # shared secret for the local Photoshop panel bridge
+    setup_choice: str = ""  # editors chosen at first run: photocraft, photoshop, or both
     saved_workflows: list = field(default_factory=list)  # named workflow choices kept beside the built-in models
     active_workflow_id: str = ""  # selected saved workflow; legacy custom_workflow can have no id
 
