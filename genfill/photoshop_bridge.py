@@ -10,20 +10,79 @@ import binascii
 import io
 import json
 import threading
+import time
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable
+from urllib.parse import parse_qs, urlsplit
 
 from PIL import Image
 
-from . import __version__
+from . import __version__, styles
 from .comfy import ComfyClient, ComfyError
-from .pipeline import Job, UserFacingError, _candidates, create_size
+from .pipeline import Job, UserFacingError, _candidates, create_size, load_reference
 from .settings import Settings
 
 BRIDGE_PORT = 47862
 MAX_BODY = 110 * 1024 * 1024
 MAX_SIDE = 8192
 MAX_PIXELS = 20_000_000
+
+
+class EditorSession:
+    """Commands from the bar are collected by the paired UXP panel's short poll."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._pending = deque()
+        self._waiting = {}
+        self._sequence = 0
+        self._seen = 0.0
+        self._document = None
+        self._width = self._height = 0
+
+    def state(self) -> dict:
+        with self._lock:
+            return {"connected": time.monotonic() - self._seen < 3,
+                    "document": self._document, "width": self._width, "height": self._height}
+
+    def next(self, document=None, width=0, height=0) -> dict | None:
+        with self._lock:
+            self._seen = time.monotonic()
+            self._document, self._width, self._height = document, width, height
+            return self._pending.popleft() if self._pending else None
+
+    def request(self, command: dict, timeout: float = 30, cancel=None) -> dict:
+        event = threading.Event()
+        with self._lock:
+            if time.monotonic() - self._seen >= 3:
+                raise UserFacingError("Open the GenFill panel in Photoshop and pair it with the companion.")
+            self._sequence += 1
+            command = {**command, "id": self._sequence}
+            self._waiting[self._sequence] = [event, None]
+            self._pending.append(command)
+        deadline = time.monotonic() + timeout
+        while not event.wait(0.1):
+            if cancel is not None and cancel.is_set():
+                break
+            if time.monotonic() >= deadline:
+                break
+        with self._lock:
+            _, reply = self._waiting.pop(command["id"], (None, None))
+            if reply is None:
+                self._pending = deque(c for c in self._pending if c["id"] != command["id"])
+        if reply is None:
+            raise UserFacingError("Photoshop did not respond. Check that its GenFill panel is open and paired.")
+        if reply.get("error"):
+            raise UserFacingError(str(reply["error"]))
+        return reply.get("result") or {}
+
+    def reply(self, message: dict) -> None:
+        with self._lock:
+            waiting = self._waiting.get(message.get("id"))
+            if waiting is not None:
+                waiting[1] = message
+                waiting[0].set()
 
 
 def decode_source(request: dict) -> Image.Image:
@@ -55,14 +114,20 @@ def decode_source(request: dict) -> Image.Image:
         raise ValueError("The image is not a valid PNG.") from exc
 
 
-def generate_images(request: dict, settings: Settings) -> list[Image.Image]:
+def generate_images(request: dict, settings: Settings, status=None, progress=None, cancel=None) -> list[Image.Image]:
     """Use the same selected model or custom workflow as the companion bar."""
     mode = request["mode"]
     count = request["count"]
     prompt = request["prompt"].strip()
     if mode == "edit":
         base = decode_source(request)
+        if not prompt and not (settings.style or settings.angle):
+            raise UserFacingError("Describe a change or choose a style on the bar.")
+        prompt = styles.styled(prompt, settings.style, restyle=True, edit=True, angle=settings.angle,
+                               model_family=settings.model_family) if settings.style or settings.angle else prompt
+        reference = load_reference(request["reference"]) if request.get("reference") else None
     else:
+        reference = None
         default_width, default_height = create_size(settings.create_choice, settings.megapixels)
         width = request.get("width", default_width)
         height = request.get("height", default_height)
@@ -71,8 +136,8 @@ def generate_images(request: dict, settings: Settings) -> list[Image.Image]:
                                                                          width * height <= MAX_PIXELS):
             raise ValueError("Create dimensions must fit within 8192 pixels per side and 20 megapixels.")
         base = Image.new("RGBA", (width, height), "white")
-    job = Job(base, None, None, prompt, create=mode == "create", custom=True)
-    return _candidates(job, settings, lambda _: None, lambda _: None, threading.Event(),
+    job = Job(base, None, None, prompt, reference, create=mode == "create", custom=True)
+    return _candidates(job, settings, status or (lambda _: None), progress or (lambda _: None), cancel or threading.Event(),
                        ComfyClient(settings.comfy_url), count)
 
 
@@ -93,15 +158,29 @@ def create_server(settings_provider: Callable[[], Settings], generator=generate_
             self.wfile.write(data)
 
         def do_GET(self):
-            if self.path == "/v1/status":
+            url = urlsplit(self.path)
+            if url.path == "/v1/status":
                 secret = settings_provider().photoshop_token
                 self._reply(200, {"version": __version__, "connected": True,
                                   "paired": bool(secret and self.headers.get("X-GenFill-Token") == secret)})
+            elif url.path == "/v1/editor/next":
+                secret = settings_provider().photoshop_token
+                if not secret or self.headers.get("X-GenFill-Token") != secret:
+                    self._reply(401, {"error": "Pair Photoshop with the companion."})
+                    return
+                query = parse_qs(url.query)
+                def number(key):
+                    try:
+                        return int(query.get(key, ["0"])[0])
+                    except ValueError:
+                        return 0
+                document = number("document") or None
+                self._reply(200, {"command": self.server.editor.next(document, number("width"), number("height"))})
             else:
                 self._reply(404, {"error": "Unknown endpoint."})
 
         def do_POST(self):
-            if self.path != "/v1/generate":
+            if self.path not in ("/v1/generate", "/v1/editor/reply"):
                 self._reply(404, {"error": "Unknown endpoint."})
                 return
             settings = settings_provider()
@@ -115,6 +194,12 @@ def create_server(settings_provider: Callable[[], Settings], generator=generate_
                 request = json.loads(self.rfile.read(length))
                 if not isinstance(request, dict):
                     raise ValueError("The request must be an object.")
+                if self.path == "/v1/editor/reply":
+                    if type(request.get("id")) is not int:
+                        raise ValueError("Missing command ID.")
+                    self.server.editor.reply(request)
+                    self._reply(200, {"ok": True})
+                    return
                 if request.get("mode") not in ("edit", "create"):
                     raise ValueError("Choose Edit or Create.")
                 if not isinstance(request.get("prompt"), str) or not request["prompt"].strip():
@@ -135,4 +220,6 @@ def create_server(settings_provider: Callable[[], Settings], generator=generate_
     class Server(ThreadingHTTPServer):
         daemon_threads = True
 
-    return Server(("127.0.0.1", port), Handler)
+    server = Server(("127.0.0.1", port), Handler)
+    server.editor = EditorSession()
+    return server

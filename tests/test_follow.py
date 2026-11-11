@@ -53,6 +53,13 @@ def test_never_hides_while_working_or_when_turned_off():
     assert busy.calls == [] and off.calls == []
 
 
+def test_photocraft_closing_does_not_hide_bar_used_for_photoshop():
+    bar = _bar()
+    bar.active_editor = "photoshop"
+    follow(bar, True, False, False)
+    assert bar.calls == []
+
+
 def test_startup_shortcut_starts_the_bar_hidden():
     program, args = autostart.command()
     assert args.endswith(autostart.BACKGROUND)
@@ -95,6 +102,7 @@ def test_watcher_reconnects_on_document_error_other_than_no_document(monkeypatch
 
     client = Client()
     monkeypatch.setattr(app, "PhotoCraftClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(app.editor_focus, "focused_editor", lambda: None)
     monkeypatch.setattr(app.setup_env, "status", lambda port: {"ready": True})
     ticks = iter(range(3))
 
@@ -105,7 +113,7 @@ def test_watcher_reconnects_on_document_error_other_than_no_document(monkeypatch
             raise RuntimeError("stop watcher")
 
     monkeypatch.setattr(app.time, "sleep", sleep)
-    bar = SimpleNamespace(busy=False, settings=Settings(), events=queue.Queue())
+    bar = SimpleNamespace(busy=False, settings=Settings(), events=queue.Queue(), active_editor="photocraft")
     with pytest.raises(RuntimeError, match="stop watcher"):
         App.watch(bar)
     assert client.closed

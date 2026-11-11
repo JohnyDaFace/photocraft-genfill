@@ -1,6 +1,6 @@
 # GenFill Companion for PhotoCraft and Photoshop
 
-A small always-on-top bar that adds AI tools to [PhotoCraft](https://github.com/storytold/photocraft),
+A small always-on-top bar that adds AI tools to [PhotoCraft](https://github.com/storytold/photocraft) and Photoshop,
 running entirely on your own computer through [ComfyUI](https://github.com/comfyanonymous/ComfyUI) and an
 image model of your choice (FLUX.2 [klein] by default):
 
@@ -243,11 +243,13 @@ through **⋯ › Settings… › Install Photoshop plugin**.
 
 For Photoshop, open the **GenFill** panel from Photoshop's Plugins menu. In companion Settings, click
 **Copy pairing token**, paste it into the panel's Connection settings, and save it. The token stays in Photoshop's
-plugin storage; the companion listens only on this computer. Open a document, choose **Edit active document**, type
-a prompt and Generate. **Create new image** starts without a document. The panel shows every returned result; click
-**Place** to add one as a layer when its dimensions match the source document, or open it as a new document at its
-native size. Photoshop support currently covers whole-image edits and Create; the PhotoCraft bar retains its full
-selection and tool set. Keep the companion running while using Photoshop.
+plugin storage; the companion listens only on this computer. Keep the panel open, then use the **companion bar** for
+the prompt, styles, reference photo, result count, size, Generate, and choosing a result. The bar follows the editor
+you last clicked (shown as **PS** or **PC** beside the prompt). With a Photoshop document open, Generate edits the
+whole image; with no document open, Create makes a new image. A result matching the Photoshop document's dimensions
+is added as a layer; a different-sized result opens at its native size as a new document. Photoshop support currently
+covers whole-image edits and Create; the PhotoCraft bar retains its full selection and tool set. Keep the companion
+running while using Photoshop.
 
 For PhotoCraft:
 

@@ -13,7 +13,7 @@ button:hover { background: #555; } button:disabled { opacity: .5; cursor: defaul
 .row { display: flex; gap: 5px; } .row input { min-width: 0; }
 details { border: 1px solid #4a4a4a; border-radius: 4px; padding: 8px; }
 details p { margin: 6px 0 0; color: #aaa; font-size: 11px; }
-#connection { font-size: 11px; color: #bbb; white-space: nowrap; }
+#connection { font-size: 11px; color: #bbb; overflow-wrap: anywhere; text-align: right; }
 #connection.connected { color: #83d49d; } #connection.disconnected { color: #ff9c8d; }
 #message { min-height: 16px; margin: 2px 0; color: #ccc; }
 #message.error { color: #ff9c8d; }

@@ -38,6 +38,14 @@ def test_photoshop_network_permission_and_runtime_target_stay_local():
     assert "const SERVER = 'http://127.0.0.1:47862'" in panel
 
 
+def test_photoshop_panel_leaves_generation_controls_to_companion_bar():
+    html = (build.ROOT / "photoshop" / "index.html").read_text()
+    assert 'id="token"' in html
+    assert 'id="prompt"' not in html
+    assert 'id="generate"' not in html
+    assert 'id="mode"' not in html
+
+
 def test_photoshop_installer_is_copied_out_of_exe_before_opening(tmp_path, monkeypatch):
     package = tmp_path / "unpacked" / "GenFill-Photoshop.ccx"
     package.parent.mkdir()

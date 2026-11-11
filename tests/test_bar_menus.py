@@ -8,7 +8,8 @@ from genfill.settings import Settings
 
 def _bar(tmp_path, monkeypatch, typed="", reference=None, mode="image"):
     monkeypatch.setattr(shoots, "SHOOTS_FILE", tmp_path / "shoots.json")
-    bar = SimpleNamespace(settings=Settings(), reference=reference, mode=mode, started=[], menus=[],
+    bar = SimpleNamespace(settings=Settings(), reference=reference, mode=mode, active_editor="photocraft",
+                          started=[], menus=[],
                           prompt=SimpleNamespace(get=lambda: typed), sel_btn=1, fix_btn=2, size_btn=3, create_btn=4, rm_btn=5,
                           _edit_shoots=print, _pick_shoot=print, _set_shoot_count=print, _set_create_choice=print,
                           _replace_face_with_photo=print, use_preset=print,

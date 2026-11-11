@@ -9,6 +9,7 @@
 - A native-size custom result opens as a new PhotoCraft document when it cannot fit the current canvas unchanged.
 - Added a Photoshop UXP panel that uses the same companion, ComfyUI models and custom workflows for whole-image edits and Create.
 - New installations can choose PhotoCraft, Photoshop or both during first-run setup; Settings can install the Photoshop panel later.
+- The companion bar follows the last clicked editor and controls Photoshop's prompt, styles, reference, result count, Create, Generate, and result picker; the Photoshop panel provides the document connection.
 
 ## 1.3.2 — 2026-11-11
 

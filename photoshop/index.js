@@ -1,22 +1,14 @@
-/* PhotoCraft's local Photoshop bridge. Runs in the UXP panel, not in Node. */
+/* Photoshop document bridge. All generation controls live in the companion bar. */
 const photoshop = require('photoshop');
 const uxpStorage = require('uxp').storage;
 const SERVER = 'http://127.0.0.1:47862';
 const TOKEN_KEY = 'photocraft-genfill-token';
-const ui = Object.fromEntries(['connection', 'settings', 'token', 'save-token', 'mode', 'prompt', 'count', 'generate', 'message', 'results', 'result-list'].map(id => [id, document.getElementById(id)]));
-let results = [];
-let sourceDocumentId = null;
+const ui = Object.fromEntries(['connection', 'settings', 'token', 'save-token', 'message'].map(id => [id, document.getElementById(id)]));
 let busy = false;
 
 function setMessage(message, error = false) {
   ui.message.textContent = message;
   ui.message.classList.toggle('error', error);
-}
-
-function setBusy(value) {
-  busy = value;
-  ui.generate.disabled = value;
-  ui['result-list'].querySelectorAll('button').forEach(button => { button.disabled = value; });
 }
 
 function bytesToBase64(bytes) {
@@ -95,64 +87,10 @@ async function readComposite(doc) {
   }, { commandName: 'Read image for GenFill' });
 }
 
-async function generate() {
-  if (busy) return;
-  const prompt = ui.prompt.value.trim();
-  const savedToken = await token();
-  if (!savedToken) { ui.settings.open = true; setMessage('Paste and save the companion token first.', true); return; }
-  if (!prompt) { setMessage('Enter a prompt first.', true); return; }
-  const mode = ui.mode.value;
-  const count = Number(ui.count.value);
-  const source = photoshop.app.activeDocument;
-  if (mode === 'edit' && !source) { setMessage('Open a Photoshop document to edit.', true); return; }
-  setBusy(true);
-  results = [];
-  ui.results.hidden = true;
-  ui['result-list'].textContent = '';
-  sourceDocumentId = mode === 'edit' ? source.id : null;
-  try {
-    setMessage(mode === 'edit' ? 'Reading document pixels…' : 'Generating…');
-    const body = { mode, prompt, count };
-    if (mode === 'edit') Object.assign(body, await readComposite(source));
-    setMessage('Generating…');
-    const response = await fetch(`${SERVER}/v1/generate`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-GenFill-Token': savedToken }, body: JSON.stringify(body)
-    });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || payload.error || `Companion error ${response.status}`);
-    if (!Array.isArray(payload.results) || !payload.results.length) throw new Error('Companion returned no images.');
-    results = payload.results;
-    renderResults();
-    setMessage(`Generated ${results.length} result${results.length === 1 ? '' : 's'}. Choose one to place.`);
-  } catch (error) {
-    setMessage(String(error.message || error), true);
-  } finally { setBusy(false); checkConnection(); }
-}
-
-function renderResults() {
-  ui.results.hidden = false;
-  ui['result-list'].textContent = '';
-  results.forEach((result, index) => {
-    const row = document.createElement('div'); row.className = 'result';
-    const preview = document.createElement('img');
-    preview.alt = `Result ${index + 1}`;
-    preview.src = `data:image/png;base64,${result.image}`;
-    const meta = document.createElement('span'); meta.className = 'meta';
-    meta.textContent = `${index + 1} · ${result.width} × ${result.height}`;
-    const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Place';
-    button.addEventListener('click', () => placeResult(index));
-    row.append(preview, meta, button);
-    ui['result-list'].appendChild(row);
-  });
-}
-
-async function placeResult(index) {
-  if (busy) return;
-  const result = results[index];
+async function placeResult(result, sourceDocumentId, index) {
   if (!result || !Number.isSafeInteger(result.width) || !Number.isSafeInteger(result.height) || result.width < 1 || result.height < 1) {
-    setMessage('Invalid result dimensions.', true); return;
+    throw new Error('Invalid result dimensions.');
   }
-  setBusy(true);
   let file;
   try {
     setMessage('Opening result in Photoshop…');
@@ -175,13 +113,48 @@ async function placeResult(index) {
         await opened.closeWithoutSaving();
       }
     }, { commandName: 'Place GenFill result' });
-    setMessage(target && target.width === result.width && target.height === result.height ? 'Placed result as a new layer.' : 'Opened result as a new document.');
-  } catch (error) {
-    setMessage(String(error.message || error), true);
+    const message = target && target.width === result.width && target.height === result.height ?
+      'Placed result as a new layer.' : 'Opened result as a new document.';
+    setMessage(message);
+    return { message };
   } finally {
     if (file) { try { await file.delete(); } catch (_) {} }
-    setBusy(false);
   }
+}
+
+async function pollBar() {
+  if (busy) return;
+  const savedToken = await token();
+  if (!savedToken) return;
+  busy = true;
+  try {
+    const doc = photoshop.app.activeDocument;
+    const params = `document=${doc ? doc.id : 0}&width=${doc ? doc.width : 0}&height=${doc ? doc.height : 0}`;
+    const response = await fetch(`${SERVER}/v1/editor/next?${params}`, {
+      headers: { 'X-GenFill-Token': savedToken }
+    });
+    if (!response.ok) throw new Error(`Companion returned ${response.status}.`);
+    const { command } = await response.json();
+    ui.connection.textContent = 'Connected · use the companion bar';
+    ui.connection.className = 'connected';
+    if (!command) return;
+    let reply;
+    try {
+      if (command.type === 'capture') {
+        if (!doc) throw new Error('Open a Photoshop document first.');
+        reply = { result: { document: doc.id, ...await readComposite(doc) } };
+      } else if (command.type === 'place') {
+        reply = { result: await placeResult(command.image, command.document, command.index || 0) };
+      } else throw new Error('Unknown companion command.');
+    } catch (error) { reply = { error: String(error.message || error) }; setMessage(reply.error, true); }
+    const sent = await fetch(`${SERVER}/v1/editor/reply`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-GenFill-Token': savedToken },
+      body: JSON.stringify({ id: command.id, ...reply }) });
+    if (!sent.ok) throw new Error(`Companion reply failed: ${sent.status}.`);
+  } catch (error) {
+    ui.connection.textContent = `Disconnected · ${String(error.message || error)}`;
+    ui.connection.className = 'disconnected';
+  } finally { busy = false; }
 }
 
 ui['save-token'].addEventListener('click', async () => {
@@ -196,5 +169,5 @@ ui['save-token'].addEventListener('click', async () => {
     setMessage(`Could not save token: ${String(error.message || error)}`, true);
   }
 });
-ui.generate.addEventListener('click', generate);
 checkConnection();
+setInterval(pollBar, 700);

@@ -53,7 +53,7 @@ def test_borderless_bar_has_direct_minimize_button(root, monkeypatch):
     monkeypatch.setattr(App, "_show_style", lambda self: None)
     monkeypatch.setattr(App, "_arrange", lambda self: None)
     bar = App.__new__(App)
-    bar.root, bar.settings, bar.theme_name = root, Settings(), "Pro"
+    bar.root, bar.settings, bar.theme_name, bar.active_editor = root, Settings(), "Pro", "photocraft"
     bar.fonts, bar.frame, bar.pill = theme.fonts(root), None, None
     bar._prompt_text, bar.update_info = "", None
     bar.build()
@@ -75,7 +75,7 @@ def test_action_buttons_are_compact_icons_with_named_tooltips(root, monkeypatch)
     monkeypatch.setattr(App, "_show_reference", lambda self: None)
     monkeypatch.setattr(App, "_show_style", lambda self: None)
     bar = App.__new__(App)
-    bar.root, bar.settings, bar.theme_name = root, Settings(), "Pro"
+    bar.root, bar.settings, bar.theme_name, bar.active_editor = root, Settings(), "Pro", "photocraft"
     bar.fonts, bar.frame, bar.pill = theme.fonts(root), None, None
     bar._prompt_text, bar.update_info = "", None
     bar.mode, bar.last_results, bar.tagged = "image", None, False
@@ -111,7 +111,7 @@ def test_bar_has_three_dot_grip_generate_divider_and_vertical_controls(root, mon
     monkeypatch.setattr(App, "_show_reference", lambda self: None)
     monkeypatch.setattr(App, "_show_style", lambda self: None)
     bar = App.__new__(App)
-    bar.root, bar.settings, bar.theme_name = root, Settings(), "Pro"
+    bar.root, bar.settings, bar.theme_name, bar.active_editor = root, Settings(), "Pro", "photocraft"
     bar.fonts, bar.frame, bar.pill = theme.fonts(root), None, None
     bar._prompt_text, bar.update_info = "", None
     bar.mode, bar.last_results, bar.tagged = "image", None, False

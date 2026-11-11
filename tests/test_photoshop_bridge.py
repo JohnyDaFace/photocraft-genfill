@@ -41,6 +41,21 @@ def test_generate_uses_selected_companion_workflow(monkeypatch):
     assert result[0].size == (512, 768)
 
 
+def test_bar_edit_applies_shared_style_and_reference(monkeypatch):
+    captured = []
+    monkeypatch.setattr(photoshop_bridge, "_candidates", lambda job, settings, *args:
+                        captured.append(job) or [Image.new("RGB", (2, 1), "green")])
+    monkeypatch.setattr(photoshop_bridge, "load_reference", lambda path: Image.new("RGB", (2, 1), "blue"))
+    settings = Settings(style="Cinematic")
+    pixels = base64.b64encode(bytes((1, 2, 3, 255, 4, 5, 6, 255))).decode()
+    photoshop_bridge.generate_images({"mode": "edit", "prompt": "red coat", "count": 1,
+        "image_format": "raw", "image_width": 2, "image_height": 1, "image_components": 4,
+        "image": pixels, "reference": "person.jpg"}, settings)
+    assert captured[0].reference is not None
+    assert "red coat" in captured[0].prompt
+    assert captured[0].prompt != "red coat"
+
+
 def test_bridge_requires_token_and_returns_all_images():
     calls = []
 
@@ -66,6 +81,32 @@ def test_bridge_requires_token_and_returns_all_images():
         assert calls == [("create", 1, "test-secret")]
         assert [(r["width"], r["height"]) for r in result["results"]] == [(120, 80), (120, 80)]
         assert base64.b64decode(result["results"][0]["image"]).startswith(b"\x89PNG")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_companion_can_request_photoshop_capture_and_receive_pixels():
+    settings = Settings(photoshop_token="test-secret")
+    server = create_server(lambda: settings, port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        port = server.server_port
+        assert _request(port, "/v1/editor/next", token="test-secret")["command"] is None
+        returned = []
+        waiter = threading.Thread(target=lambda: returned.append(server.editor.request({"type": "capture"}, timeout=3)))
+        waiter.start()
+        command = _request(port, "/v1/editor/next?document=42&width=2&height=1", token="test-secret")["command"]
+        assert command["type"] == "capture"
+        pixels = base64.b64encode(bytes((1, 2, 3, 255, 4, 5, 6, 255))).decode()
+        _request(port, "/v1/editor/reply", {"id": command["id"], "result": {"document": 42,
+                 "image_format": "raw", "image_width": 2, "image_height": 1,
+                 "image_components": 4, "image": pixels}}, token="test-secret")
+        waiter.join(3)
+        assert decode_source(returned[0]).getpixel((1, 0)) == (4, 5, 6, 255)
+        assert server.editor.state()["document"] == 42
     finally:
         server.shutdown()
         server.server_close()

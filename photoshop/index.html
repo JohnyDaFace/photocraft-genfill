@@ -9,12 +9,9 @@
   <main>
     <header><h1>GenFill</h1><span id="connection" role="status">Checking…</span></header>
     <details id="settings"><summary>Connection settings</summary><label for="token">Companion token</label><div class="row"><input id="token" type="password" autocomplete="off" placeholder="Paste token from Settings"><button id="save-token" type="button">Save</button></div><p>Copy the pairing token from GenFill's Settings.</p></details>
-    <label for="mode">Mode</label><select id="mode"><option value="edit">Edit active document</option><option value="create">Create new image</option></select>
-    <label for="prompt">Prompt</label><textarea id="prompt" rows="5" placeholder="Describe the image or change"></textarea>
-    <label for="count">Variations</label><select id="count"><option>1</option><option>2</option><option>3</option><option>4</option></select>
-    <button id="generate" type="button" class="primary">Generate</button>
+    <p>Use the GenFill companion bar to enter your prompt, choose a style and reference, then Generate.</p>
+    <p>Keep this panel open so the bar can read your active Photoshop document and place the result.</p>
     <p id="message" role="status" aria-live="polite"></p>
-    <section id="results" hidden><h2>Results</h2><div id="result-list"></div></section>
   </main>
   <script src="index.js"></script>
 </body>

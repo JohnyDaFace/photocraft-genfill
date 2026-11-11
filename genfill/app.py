@@ -4,6 +4,8 @@ Styled like PhotoCraft's active Pro theme. Work runs on a thread; the UI polls a
 from __future__ import annotations
 
 import os
+import base64
+import io
 import queue
 import socket
 import secrets
@@ -17,7 +19,7 @@ from dataclasses import replace
 from pathlib import Path
 from tkinter import filedialog, messagebox
 
-from PIL import ImageTk
+from PIL import ImageOps, ImageTk
 
 from . import (__version__, autostart, dpi, presets, results_store, setup_env, shoot_store, shoots, style_thumbs, styles,
                theme, updates)
@@ -25,11 +27,11 @@ from .comfy import ComfyClient, ComfyError
 from .dpi import px
 from .families import family
 from .photocraft_client import PhotoCraftClient, PhotoCraftError
-from . import photoshop_bridge, photoshop_install
+from . import editor_focus, photoshop_bridge, photoshop_install
 from .photoshoot import SHOT_COUNTS, reshoot, run_photoshoot
 from .picker import Picker
 from .style_panel import StylePanel
-from .pipeline import (CREATE_CHOICES, EXPAND_CHOICES, FIND, MAX_VARIATIONS, UserFacingError, create, create_size,
+from .pipeline import (CREATE_CHOICES, EXPAND_CHOICES, FIND, MAX_VARIATIONS, Placed, Results, UserFacingError, create, create_size,
                        SWAP_GONE, depth_effect, depth_select, enhance, expand, fix_faces, generate, load_reference, place, remove_background,
                        remove_things, results_for_layer, run_upscale, select_things, similar, sketch_to_image, swap)
 from .settings import SETTINGS_FILE, Settings
@@ -232,6 +234,7 @@ class App:
         self.shoot_tagged = False           # the layer selected in PhotoCraft is a shot of a photoshoot
         self.theme_name = self.settings.last_theme
         self.mode = "image"            # "selection" / "image" (nothing selected) / "empty" (no document open)
+        self.active_editor = "photoshop" if self.settings.setup_choice == "photoshop" else "photocraft"
         self.reference: str | None = None   # path of the optional reference picture
         self.update_info: tuple[str, str] | None = None  # (version, url) when a newer release exists
         self.conn = {"PhotoCraft": (UNKNOWN, "checking…"), "ComfyUI": (UNKNOWN, "checking…"),
@@ -318,6 +321,11 @@ class App:
         grip.bind("<ButtonPress-1>", self._drag_start)
         grip.bind("<B1-Motion>", self._drag)
         grip.bind("<ButtonRelease-1>", self._drag_end)
+        self.editor_label = tk.Label(top, text="PS" if self.active_editor == "photoshop" else "PC",
+                                     bg=p.chrome, fg=p.text_dim, font=f["small"])
+        self.editor_label.pack(side="left", padx=(0, px(5)))
+        self.editor_tooltip = Tooltip(self.editor_label, "Editor last used: Photoshop" if self.active_editor == "photoshop"
+                                      else "Editor last used: PhotoCraft")
 
         self.prompt = PromptField(top, p, f["body"], 440, lambda: self.start("fill"), self.history_menu)
         self.prompt.pack(side="left", fill="x", expand=True)
@@ -379,13 +387,20 @@ class App:
         for b in self.actions:
             b.pack_forget()
         self.generate_sep.pack_forget()
-        shown = {"selection": [self.rm_btn, self.fix_btn, self.gen_btn],
-                 "image": [self.sel_btn, self.rm_btn, self.fix_btn, self.size_btn, self.create_btn, self.gen_btn],
-                 "empty": [self.create_btn, self.gen_btn]}[self.mode]
-        if (self.last_results is not None or self.tagged) and self.picker is None and not self.busy \
+        if self.active_editor == "photoshop":
+            shown = [self.create_btn, self.gen_btn]
+        else:
+            shown = {"selection": [self.rm_btn, self.fix_btn, self.gen_btn],
+                     "image": [self.sel_btn, self.rm_btn, self.fix_btn, self.size_btn, self.create_btn, self.gen_btn],
+                     "empty": [self.create_btn, self.gen_btn]}[self.mode]
+        available_results = (self.last_results is not None and
+                             getattr(self.last_results, "editor", "photocraft") == self.active_editor) or \
+                            (self.tagged and self.active_editor == "photocraft")
+        if available_results and self.picker is None and not self.busy \
                 and self.mode != "empty":
             shown = shown[:-1] + [self.others_btn, shown[-1]]
-        if self.shoot_tagged and self.picker is None and not self.busy and self.mode != "empty":
+        if self.shoot_tagged and self.active_editor == "photocraft" and self.picker is None and not self.busy \
+                and self.mode != "empty":
             shown = shown[:-1] + [self.reshoot_btn, shown[-1]]
         for b in reversed(shown):  # right-aligned, with Generate set off from the icon actions
             b.pack(side="right", padx=(px(4), 0))
@@ -395,13 +410,19 @@ class App:
         if style and self.mode == "image":  # Generate with nothing typed just applies the style
             self.prompt.set_placeholder(f"Describe a change, or leave empty to make it {style}…")
         else:
-            self.prompt.set_placeholder(PLACEHOLDER[self.mode] + (f"   Style: {style}" if style else ""))
+            placeholder = ("Describe a change to the Photoshop image…" if self.active_editor == "photoshop"
+                           and self.mode == "image" else PLACEHOLDER[self.mode])
+            self.prompt.set_placeholder(placeholder + (f"   Style: {style}" if style else ""))
         empty = self.mode == "empty"
         # nothing open: the menu button only picks the shape; the blue button creates
         self.create_btn.configure_button(
             text="Size" if empty else "", kind="outline" if empty else "icon",
             tooltip=f"Size: choose output shape ({self.settings.create_choice})" if empty
+            else "Create a new picture" if self.active_editor == "photoshop"
             else "Create: new picture, sketch, or photoshoot")
+        self.others_btn.configure_button(tooltip="Other Photoshop results: place another choice" if
+                                         self.active_editor == "photoshop" else
+                                         "Other results: swap for another result from the same Generate")
         if self.busy:
             self.gen_btn.configure_button(icon="x", text="Cancel", kind="outline", tooltip="Stop (Esc)")
         elif empty:
@@ -418,6 +439,16 @@ class App:
         if mode != self.mode:
             self.mode = mode
             self._arrange()
+
+    def set_editor(self, editor: str) -> None:
+        if editor != self.active_editor:
+            self.active_editor = editor
+            self.editor_label.configure(text="PS" if editor == "photoshop" else "PC")
+            self.editor_tooltip.text = f"Editor last used: {'Photoshop' if editor == 'photoshop' else 'PhotoCraft'}"
+            self.set_mode("empty" if editor == "photoshop" else "image")
+            self._arrange()
+            self.say(f"Using {'Photoshop' if editor == 'photoshop' else 'PhotoCraft'} from the bar.", OK,
+                     hide_after=2500)
 
     def set_theme(self, name: str) -> None:
         if name and name != self.theme_name:
@@ -718,9 +749,10 @@ class App:
                   for c in CREATE_CHOICES for w, h in [create_size(c, self.settings.megapixels)]]
         items += [("sep",), ("info", "Opens as a new document")]
         items.append(("sep",))
-        if not pick_only:  # a sketch needs an open picture; a photoshoot starts from a photo file
+        if not pick_only and self.active_editor != "photoshop":  # these tools need PhotoCraft
             items.append(("item", "From my sketch (the active layer)", lambda: self.start("sketch")))
-        items.append(("sub", "Photoshoot", self.shoot_items()))
+        if self.active_editor != "photoshop":
+            items.append(("sub", "Photoshoot", self.shoot_items()))
         self._menu(self.create_btn, items)
 
     def choose_create_second(self) -> None:
@@ -821,7 +853,7 @@ class App:
     # -- background work -----------------------------------------------------------------------
     def check_connections(self) -> None:
         msgs = []
-        if self.settings.setup_choice == "photoshop":
+        if self.settings.setup_choice == "photoshop" or self.active_editor == "photoshop":
             self.conn["PhotoCraft"] = (None, "not selected")
         elif not all(setup_env.status(self.settings.port).values()):
             self.conn["PhotoCraft"] = (False, "not set up")
@@ -875,11 +907,24 @@ class App:
                 self.events.put(("update", found))
 
     def watch(self) -> None:
-        """Follow PhotoCraft's selection (and theme) so the bar shows the right buttons."""
+        """Follow the last focused editor and its current document."""
         pc, n, last, last_layer = None, 0, None, None
+        last_editor = self.active_editor
         while True:
             time.sleep(0.8)
-            if self.settings.setup_choice == "photoshop":
+            focused = editor_focus.focused_editor()
+            if focused and focused != last_editor:
+                last_editor = focused
+                self.events.put(("editor", focused))
+                last = None
+            if last_editor == "photoshop":
+                state = self.photoshop_server.editor.state() if self.photoshop_server else {}
+                self.conn["Photoshop"] = (bool(state.get("connected")),
+                                          "panel connected" if state.get("connected") else "open and pair the panel")
+                mode = "image" if state.get("connected") and state.get("document") else "empty"
+                if mode != last:
+                    self.events.put(("mode", mode))
+                    last = mode
                 continue
             if self.busy:
                 continue
@@ -937,6 +982,10 @@ class App:
               label: str | None = None, preset: str | None = None) -> None:
         if self.busy:
             return
+        if self.active_editor == "photoshop" and (self.photoshop_server is None or
+                                                    not self.photoshop_server.editor.state()["connected"]):
+            self.say("Open and pair the GenFill panel in Photoshop first.", BAD)
+            return
         self._forget_results()  # a new job: the last results can't be swapped in any more
         self.settings = Settings.load()
         self.settings.last_theme = self.theme_name
@@ -967,6 +1016,26 @@ class App:
         self.cancel.clear()
         self._arrange()
         self.progress_busy()
+        if self.active_editor == "photoshop":
+            if job not in ("fill", "create"):
+                self.finish()
+                self.say("This tool is not yet available for Photoshop. Use Generate or Create.", BAD)
+                return
+            if job == "create":
+                shape, reference = self.settings.create_choice, self.reference
+                def fn(prompt_, settings, status, progress, cancel):
+                    ref = load_reference(reference) if reference else None
+                    results = create(shape, prompt_, settings, status, progress, cancel, reference=ref)
+                    results.editor = "photoshop"
+                    return self._offer(results, settings, status)
+                self.say(f"Creating a {shape} picture…", None)
+            else:
+                reference = self.reference
+                def fn(prompt_, settings, status, progress, cancel):
+                    return self._photoshop_edit(prompt_, settings, status, progress, cancel, reference)
+                self.say("Reading the active Photoshop document…", None)
+            threading.Thread(target=self._work, args=(fn, prompt), daemon=True).start()
+            return
         if job == "photoshoot":
             def fn(_prompt, settings, status, progress, cancel):
                 return run_photoshoot(choice, what, settings, status, progress, cancel)
@@ -1068,11 +1137,41 @@ class App:
             results = create(settings.create_choice, prompt, settings, status, progress, cancel, reference=ref)
         return self._offer(results, settings, status)
 
+    def _photoshop_edit(self, prompt, settings, status, progress, cancel, reference):
+        if self.photoshop_server is None:
+            raise UserFacingError("Photoshop bridge is not running.")
+        capture = self.photoshop_server.editor.request({"type": "capture"}, cancel=cancel)
+        base = photoshop_bridge.decode_source(capture)
+        status("Generating from the Photoshop document…")
+        images = photoshop_bridge.generate_images({**capture, "mode": "edit", "prompt": prompt,
+                 "count": settings.variations, "reference": reference}, settings, status, progress, cancel)
+        previews = [ImageOps.contain(image, (256, 256)) for image in images]
+        results = Results(images, previews, "Photoshop edit", False, base.size, None,
+                          new_document=any(image.size != base.size for image in images))
+        results.editor = "photoshop"
+        results.photoshop_document = capture.get("document")
+        return self._offer(results, settings, status)
+
+    def _place_photoshop(self, results, index: int, status, cancel) -> str:
+        if self.photoshop_server is None:
+            raise UserFacingError("Photoshop bridge is not running.")
+        image = results.images[index]
+        buffer = io.BytesIO()
+        image.save(buffer, "PNG")
+        status("Placing the result in Photoshop…")
+        reply = self.photoshop_server.editor.request({"type": "place", "document": getattr(results, "photoshop_document", None),
+            "index": index, "image": {"image": base64.b64encode(buffer.getvalue()).decode("ascii"),
+                                       "width": image.width, "height": image.height}}, timeout=60, cancel=cancel)
+        results.placed = Placed(index, ("Photoshop", ""), None)
+        return reply.get("message", "Placed result in Photoshop")
+
     def _offer(self, results, settings, status):
         """Several results: let the user choose; one: place it straight away."""
         if len(results.images) > 1:
             self.events.put(("pick", results))
             return None  # the picker takes it from here
+        if getattr(results, "editor", "photocraft") == "photoshop":
+            return self._place_photoshop(results, 0, status, self.cancel)
         status("Placing the result in PhotoCraft…")
         return place(results, 0, settings)
 
@@ -1080,7 +1179,9 @@ class App:
         """The first pick adds the result; later picks swap it for the one in PhotoCraft."""
         def fn(*_a):
             try:
-                text = swap(results, index, self.settings)
+                text = (self._place_photoshop(results, index, lambda s: self.events.put(("status", s)), self.cancel)
+                        if getattr(results, "editor", "photocraft") == "photoshop" else
+                        swap(results, index, self.settings))
             except UserFacingError as e:
                 self.events.put(("placed", (results, str(e) == SWAP_GONE)))
                 raise
@@ -1102,7 +1203,7 @@ class App:
                         lambda f: self.events.put(("progress", f)), self.cancel)
             if result is not None:
                 hint = "" if result.startswith(("Selected", "Created", "Upscaled", "Photoshoot")) \
-                    else " (Ctrl+Z in PhotoCraft undoes it.)"
+                    or self.active_editor == "photoshop" else " (Ctrl+Z in PhotoCraft undoes it.)"
                 self.events.put(("done", (True, f"Done: {result}.{hint}")))
         except UserFacingError as e:
             self.events.put(("done", (False, str(e))))
@@ -1123,6 +1224,8 @@ class App:
                                  else "Connected to PhotoCraft and ComfyUI.", OK, hide_after=2500)
                 elif kind == "mode":
                     self.set_mode(value)
+                elif kind == "editor":
+                    self.set_editor(value)
                 elif kind == "photocraft":
                     self.follow_photocraft(value)
                 elif kind == "photocraft_connection":
@@ -1186,8 +1289,10 @@ class App:
             self.progress_busy()
 
         def picked(i: int) -> None:
-            swapping = results.placed is not None
-            self.say(f"Swapping in result {i + 1}…" if swapping else f"Placing result {i + 1} in PhotoCraft…", None)
+            photoshop = getattr(results, "editor", "photocraft") == "photoshop"
+            swapping = results.placed is not None and not photoshop
+            self.say(f"Swapping in result {i + 1}…" if swapping else
+                     f"Placing result {i + 1} in {'Photoshop' if photoshop else 'PhotoCraft'}…", None)
             busy()
             threading.Thread(target=self._place, args=(results, i), daemon=True).start()
 
@@ -1199,7 +1304,8 @@ class App:
 
         def discarded() -> None:
             self.picker = None
-            self.say("Discarded. Nothing was added to PhotoCraft.", None, hide_after=4000)
+            editor_name = "Photoshop" if getattr(results, "editor", "photocraft") == "photoshop" else "PhotoCraft"
+            self.say(f"Discarded. Nothing was added to {editor_name}.", None, hide_after=4000)
             self.finish()
 
         def closed() -> None:
@@ -1208,7 +1314,8 @@ class App:
         if self.picker is not None:
             self.picker.dismiss()
         self.picker = Picker(self.root, results, self.p, self.fonts, picked, discarded,
-                             on_similar=more if results.job is not None else None, on_close=closed)
+                             on_similar=more if results.job is not None and
+                             getattr(results, "editor", "photocraft") != "photoshop" else None, on_close=closed)
 
     def show_other_results(self) -> None:
         """Bring back the results window to swap the placed result for another one: the selected layer's
@@ -1216,6 +1323,12 @@ class App:
         if self.busy:
             return
         mine = self.last_results
+        if self.active_editor == "photoshop":
+            if mine is not None and getattr(mine, "editor", "photocraft") == "photoshop":
+                self.choose(mine)
+            else:
+                self.say("There are no Photoshop results to show yet.", None, hide_after=4000)
+            return
 
         def find() -> None:
             try:
@@ -1300,6 +1413,8 @@ class App:
             if choice in ("photoshop", "both"):
                 self.settings.follow_photocraft = False
             self.settings.save()
+            if choice == "photoshop":
+                self.set_editor("photoshop")
             if choice in ("photocraft", "both"):
                 try:
                     setup_env.install(self.settings.port)
@@ -1334,6 +1449,8 @@ class App:
     def follow_photocraft(self, running: bool) -> None:
         """Show the bar when PhotoCraft opens; hide it when PhotoCraft closes (after it was seen, or when
         started with Windows). Two failed checks in a row count as closed (one can be a busy moment)."""
+        if getattr(self, "active_editor", "photocraft") == "photoshop":
+            return
         if running:
             self._photocraft_down = 0
             self.photocraft_seen = True

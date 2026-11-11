@@ -75,20 +75,24 @@ class Picker(tk.Toplevel):
 
     def _show_state(self) -> None:
         placed = self.placed_index
+        editor = getattr(self.results, "editor", "photocraft")
+        editor_name = "Photoshop" if editor == "photoshop" else "PhotoCraft"
         if self.waiting:
-            text = "Adding it to PhotoCraft…"
+            text = f"Adding it to {editor_name}…"
         elif self.results.new_document:
             text = ("Click the one you want; it opens as a new document." if self.results.placed is None else
                     "Click another one to open it as a new document too. Done closes this window.")
         elif self.results.placed is None:
-            text = "Click the one you want; it's added to PhotoCraft as a new layer."
+            text = f"Click the one you want; it's added to {editor_name} as a new layer."
+        elif editor == "photoshop":
+            text = "Click another result to add it as another layer. Done closes this window."
         else:
             text = "Click another one to swap it in (the same layer is replaced). Done keeps the one in PhotoCraft."
         if self._on_similar and not self.waiting:
             text += "\n'More like this' makes new versions close to one."
         self.hint.configure(text=text)
         for i, tag in enumerate(self.tags):
-            tag.configure(text=f"{i + 1}  ·  In PhotoCraft" if i == placed else str(i + 1),
+            tag.configure(text=f"{i + 1}  ·  In {editor_name}" if i == placed else str(i + 1),
                           fg=self.p.accent if i == placed else self.p.text_dim)
             self._ring(i)
         if self.close_btn is not None:
