@@ -8,6 +8,7 @@
 - Workflow settings explain Image 1 and use plain result names (such as Generated image and Color matched image); they show a dropdown only when a choice is needed.
 - Custom workflows can keep their saved seeds and generated image dimensions.
 - Custom workflows can return selected additional image outputs from one run, including paired previews.
+- Selected custom workflows keep their own model, encoder, VAE, LoRA, sampler and step settings; separate saved workflows are not chained automatically.
 - A native-size custom result opens as a new PhotoCraft document when it cannot fit the current canvas unchanged.
 - Added a Photoshop UXP panel that uses the same companion, ComfyUI models and custom workflows.
 - New installations can choose PhotoCraft, Photoshop or both during first-run setup; Settings can install the Photoshop panel later.
