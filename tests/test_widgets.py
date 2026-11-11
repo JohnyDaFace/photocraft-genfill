@@ -326,6 +326,64 @@ def test_hyprland_focus_listener_ignores_other_events_and_marks_window_change():
         thread.join(1)
 
 
+def test_hyprland_focus_listener_keeps_own_windows_open(monkeypatch):
+    import os
+    import socket
+    import threading
+    from genfill import widgets
+
+    monkeypatch.setattr(widgets, "_hyprland_window_pid",
+                        lambda address: os.getpid() if address == "0x1234" else 999999)
+    reader, writer = socket.socketpair()
+    changed, stop = threading.Event(), threading.Event()
+    thread = threading.Thread(target=widgets._listen_hyprland_focus,
+                              args=(reader, changed, stop), daemon=True)
+    thread.start()
+    try:
+        writer.sendall(b"activewindowv2>>0x1234\n")
+        assert not changed.wait(0.1)
+        writer.sendall(b"activewindowv2>>0x5678\n")
+        assert changed.wait(1)
+    finally:
+        stop.set()
+        writer.close()
+        thread.join(1)
+
+
+def test_hyprland_window_pid_reads_request_socket(tmp_path, monkeypatch):
+    import json
+    import os
+    import socket
+    import sys
+    import threading
+    from genfill import widgets
+
+    if not sys.platform.startswith("linux"):
+        pytest.skip("Hyprland request socket applies only on Linux")
+    event_path = tmp_path / ".socket2.sock"
+    request_path = tmp_path / ".socket.sock"
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(str(request_path))
+    server.listen(1)
+    monkeypatch.setattr(widgets, "_hyprland_event_socket", lambda: event_path)
+    requests = []
+
+    def respond():
+        conn, _ = server.accept()
+        with conn:
+            requests.append(conn.recv(1024))
+            conn.sendall(json.dumps([{"address": "0x1234", "pid": os.getpid()}]).encode())
+
+    thread = threading.Thread(target=respond, daemon=True)
+    thread.start()
+    try:
+        assert widgets._hyprland_window_pid("1234") == os.getpid()
+        assert requests == [b"j/clients"]
+    finally:
+        server.close()
+        thread.join(1)
+
+
 def test_popup_observes_hyprland_focus_socket(root, tmp_path, monkeypatch):
     import socket
     import sys

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Hyprland/XWayland menus stay open when focus moves between the bar and its own popup, and close when another app takes focus.
+
 ## 1.3.2 — 2026-11-11
 
 ### Added
