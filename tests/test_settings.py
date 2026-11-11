@@ -232,7 +232,9 @@ def test_workflow_options_open_separately_and_save_stays_visible(monkeypatch):
             "5": {"class_type": "PreviewImage", "inputs": {"images": ["4", 0]}},
         }, [])
         dialog.open_workflow_settings()
-        dialog.update()
+        # update_idletasks, not update: on macOS a full update waits forever for windows whose parent
+        # (the hidden test root) is never shown
+        dialog.update_idletasks()
         assert dialog.workflow_window.winfo_exists()
         assert dialog.workflow_window.winfo_toplevel() is not dialog
         assert dialog.save_button.winfo_manager() == "pack"
