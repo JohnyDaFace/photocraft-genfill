@@ -8,7 +8,6 @@
 - Workflow settings explain Image 1 and use plain result names (such as Generated image and Color matched image); they show a dropdown only when a choice is needed.
 - Custom workflows can keep their saved seeds and generated image dimensions.
 - Custom workflows can return selected additional image outputs from one run, including paired previews.
-- Selected custom workflows keep their own model, encoder, VAE, LoRA, sampler and step settings; separate saved workflows are not chained automatically.
 - A native-size custom result opens as a new PhotoCraft document when it cannot fit the current canvas unchanged.
 - Added a Photoshop UXP panel that uses the same companion, ComfyUI models and custom workflows.
 - New installations can choose PhotoCraft, Photoshop or both during first-run setup; Settings can install the Photoshop panel later.
@@ -20,6 +19,10 @@
 - Hyprland/XWayland menus stay open when focus moves between the bar and its own popup, and close when another app takes focus.
 - Create now sends the bar's reference image to a custom workflow's first image input; a second image input is needed only when two images are attached.
 - Photoshop keeps its document status while the panel captures pixels, reports capture progress, and transfers full-frame pixel buffers without the encoder that stalled on layered documents.
+
+### Documentation
+
+- The README now lists Photoshop as a supported editor and gives it a separate setup path.
 
 ## 1.3.2 — 2026-11-11
 
