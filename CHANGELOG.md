@@ -13,6 +13,7 @@
 - Create explains when the selected model cannot see the reference picture in that flow.
 - Create ignores a saved second-reference path when no main reference is attached.
 - Film noir no longer asks the model to add venetian blinds to the scene.
+- On Hyprland/XWayland, open menus close when another window gets focus.
 - Refreshed the bar menus and Settings dropdown appearance.
 
 ### Documentation

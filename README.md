@@ -232,6 +232,7 @@ Download the file for your computer from the **Releases** page of this repositor
   time, **right-click the app › Open › Open** (it isn't signed by Apple). If macOS says it is damaged, run
   `xattr -cr "/Applications/GenFill for PhotoCraft.app"` in Terminal once.
 - **Linux:** `GenFill-for-PhotoCraft-Linux.tar.gz` → extract → run `genfill-for-photocraft`.
+  On Hyprland/XWayland, popup menus follow compositor focus changes and close when you switch windows.
 
 ## First time
 
