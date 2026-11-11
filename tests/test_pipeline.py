@@ -722,6 +722,18 @@ def test_create_makes_new_pictures_and_opens_the_chosen_one(tmp_path):
     assert Image.open(tmp_path / pc.opened[0]).size == (1288, 1610)
 
 
+def test_create_without_main_reference_ignores_old_second_reference(tmp_path):
+    from genfill.pipeline import create
+    settings = _settings(tmp_path)
+    settings.create_second_reference = str(tmp_path / "old-second-image.png")
+    comfy = FakeComfy()
+    results = create("4:5", "a lighthouse at dusk", settings, lambda s: None, lambda f: None,
+                     threading.Event(), comfy=comfy, count=1, reference=None)
+    assert results.new_document
+    assert comfy.uploads == []
+    assert "ref1" not in comfy.wfs[0] and "ref2" not in comfy.wfs[0]
+
+
 def test_create_works_on_a_create_only_model_and_says_the_reference_is_left_out(tmp_path):
     from genfill.pipeline import create
     s = _settings(tmp_path)
@@ -737,6 +749,34 @@ def test_create_needs_a_prompt(tmp_path):
     comfy = FakeComfy()
     with pytest.raises(UserFacingError, match="Describe the picture"):
         _create(tmp_path, comfy, prompt="  ")
+    assert comfy.runs == 0
+
+
+def test_create_restyles_single_reference_without_a_typed_prompt(tmp_path):
+    from genfill.pipeline import create
+    settings = _settings(tmp_path)
+    settings.style = "Caricature drawing"
+    comfy = FakeComfy()
+    result = create("4:5", "", settings, lambda s: None, lambda f: None,
+                    threading.Event(), comfy=comfy, count=1,
+                    reference=Image.new("RGB", (300, 200), "red"))
+    prompt = comfy.wfs[0]["text"]["inputs"]["text"]
+    assert "caricature" in prompt.lower()
+    assert "same people" in prompt.lower()
+    assert comfy.uploads == [(300, 200)]
+    assert result.new_document
+
+
+def test_create_restyle_needs_a_model_that_can_see_the_reference(tmp_path):
+    from genfill.pipeline import create
+    settings = _settings(tmp_path)
+    settings.switch_family("krea2")
+    settings.style = "Caricature drawing"
+    comfy = FakeComfy()
+    with pytest.raises(UserFacingError, match="can't see the reference"):
+        create("4:5", "", settings, lambda s: None, lambda f: None,
+               threading.Event(), comfy=comfy, count=1,
+               reference=Image.new("RGB", (100, 100)))
     assert comfy.runs == 0
 
 

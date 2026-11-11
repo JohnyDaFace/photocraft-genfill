@@ -68,8 +68,9 @@ DEFAULT_STYLES: list[tuple[str, str]] = [
      "Black and white photograph on Ilford HP5 film, deep blacks and luminous highlights, rich mid-tone contrast, "
      "fine natural grain, timeless classic look."),
     ("Film noir",
-     "1940s film noir still, black and white, hard low light through venetian blinds casting striped shadows, "
-     "deep inky blacks, drifting smoke and haze, fine film grain, mysterious tension."),
+     "1940s film noir still, black and white, dramatic low-key directional lighting, crisp shadows, "
+     "deep inky blacks, luminous highlights, fine film grain, mysterious tension. "
+     "Preserve the setting and objects described in the prompt."),
     ("Instant photo",
      "Instant film photograph with a thick white border, soft dreamy focus, faded warm colours, gentle light "
      "leaks and a slight vignette, casual candid feel."),
@@ -216,6 +217,10 @@ DEFAULT_STYLES: list[tuple[str, str]] = [
     ("Pencil sketch",
      "Monochrome graphite pencil sketch on paper, black and grey only, fine cross-hatching, soft shading, "
      "hand-drawn lines."),
+    ("Caricature drawing",
+     "Hand-drawn portrait caricature with expressive ink outlines and lively coloured-pencil shading. "
+     "Exaggerate the subject's distinctive facial features playfully while keeping their identity recognizable. "
+     "Keep the people, clothing, objects and setting described in the prompt."),
     ("Comic book",
      "Comic book art, bold black ink outlines, dramatic shading with halftone dots, flat vivid colours, strong "
      "directional light, energetic composition, clean art with no speech bubbles."),
@@ -314,7 +319,8 @@ PRODUCT = {"Studio white", "Hero shot", "Flat lay", "Lifestyle", "Luxury", "Podi
            "Food overhead", "Food dark & moody", "Model studio", "Model close-up", "In hand", "Model lifestyle",
            "Model outdoors"}
 MODEL = {"Model studio", "Model close-up", "In hand", "Model lifestyle", "Model outdoors"}
-ART = {"Anime", "Japanese ink", "Watercolour", "Oil painting", "Pencil sketch", "Comic book", "3D animation",
+ART = {"Anime", "Japanese ink", "Watercolour", "Oil painting", "Pencil sketch", "Caricature drawing",
+       "Comic book", "3D animation",
        "Fantasy art", "Neon cyberpunk", "Toy figure", "Claymation", "Pixel art", "Stained glass", "Retro 80s",
        "Surreal", "Gouache", "Charcoal", "Ink illustration", "Impressionism", "Manga", "Chibi", "Picture book",
        "Gongbi", "Low-poly"}

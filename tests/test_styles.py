@@ -134,7 +134,8 @@ def test_the_panel_has_a_tab_per_kind_each_starting_with_off():
     assert all(g[0][0] == "Off" for _, g in got)
     tab = dict(got)
     assert "Rembrandt light" in dict(tab["Portrait"]) and "Studio white" in dict(tab["Product"])
-    assert "Anime" in dict(tab["Art"]) and "1970s" in dict(tab["Eras"])
+    assert "Anime" in dict(tab["Art"]) and "Caricature drawing" in dict(tab["Art"])
+    assert "1970s" in dict(tab["Eras"])
     assert tab["Yours"][1] == ("Mine", "Pastel.")
     assert tab_of("Luxury", every) == "Product" and tab_of("", every) == "Photo" and tab_of("Mine", every) == "Yours"
     assert tab_of("Split light", every) == "Portrait"

@@ -46,26 +46,30 @@ PLACEHOLDER = {"selection": "Describe what to fill in, or leave empty…",
 
 
 class PromptField(tk.Canvas):
-    """Rounded text field with a placeholder and a recent-prompts button inside."""
+    """Rounded prompt field that wraps and grows while preserving the compact one-line bar."""
 
     def __init__(self, master, p, font, width: int, on_enter, on_history):
         width = px(width)
         super().__init__(master, width=width, height=px(32), bg=p.chrome, highlightthickness=0, bd=0)
-        self.p, self.w, self._focused, self._showing = p, width, False, False
+        self.p, self.w, self.h, self._focused, self._showing = p, width, px(32), False, False
+        self._line_height = font.metrics("linespace")
         self._placeholder = ""
-        self.entry = tk.Entry(self, bd=0, relief="flat", bg=p.field, fg=p.text, insertbackground=p.text,
-                              font=font, highlightthickness=0, selectbackground=p.accent, selectforeground="#ffffff")
+        self.entry = tk.Text(self, bd=0, relief="flat", bg=p.field, fg=p.text, insertbackground=p.text,
+                             font=font, highlightthickness=0, selectbackground=p.accent, selectforeground="#ffffff",
+                             wrap="word", height=1, padx=0, pady=0, spacing1=0, spacing2=0, spacing3=0)
         self.history = BarButton(self, p, font, on_history, icon="history", height=24, bg=p.field,
                                  tooltip="Recent prompts")
         self._bg = None
         self._draw_bg()
-        self._entry_win = self.create_window(px(12), px(16), window=self.entry, anchor="w",
+        self._entry_win = self.create_window(px(12), px(6), window=self.entry, anchor="nw",
                                              width=width - px(12 + 34), height=px(20))
         self._history_win = self.create_window(width - px(5), px(16), window=self.history, anchor="e")
         self.bind("<Configure>", self._resized)  # it stretches to the bar's width
         self.entry.bind("<FocusIn>", self._focus_in)
         self.entry.bind("<FocusOut>", self._focus_out)
-        self.entry.bind("<Return>", lambda e: on_enter())
+        self.entry.bind("<Return>", lambda e: (on_enter(), "break")[1])
+        self.entry.bind("<Shift-Return>", lambda e: (self.entry.insert("insert", "\n"), "break")[1])
+        self.entry.bind("<<Modified>>", self._modified)
         self.bind("<Button-1>", lambda e: self.entry.focus_set())
 
     def _resized(self, e) -> None:
@@ -74,9 +78,29 @@ class PromptField(tk.Canvas):
             self.itemconfigure(self._entry_win, width=self.w - px(12 + 34))
             self.coords(self._history_win, self.w - px(5), px(16))
             self._draw_bg()
+            self.after_idle(self._resize_to_text)
+
+    def _modified(self, _e=None) -> None:
+        if self.entry.edit_modified():
+            self.entry.edit_modified(False)
+            self.after_idle(self._resize_to_text)
+
+    def _resize_to_text(self) -> None:
+        if not self.winfo_exists():
+            return
+        lines = 1
+        if not self._showing:
+            counted = self.entry.count("1.0", "end-1c", "displaylines")
+            lines = min(5, max(1, (counted[0] if counted else 0) + 1))
+        height = max(px(32), px(12) + self._line_height * lines)
+        if height != self.h:
+            self.h = height
+            self.configure(height=height)
+            self.itemconfigure(self._entry_win, height=height - px(12))
+            self._draw_bg()
 
     def _draw_bg(self):
-        img = ImageTk.PhotoImage(shape_image(self.w, px(32), px(8), self.p.field,
+        img = ImageTk.PhotoImage(shape_image(self.w, self.h, px(8), self.p.field,
                                              self.p.accent if self._focused else self.p.field_border))
         self.delete("bg")
         self.create_image(0, 0, image=img, anchor="nw", tags="bg")
@@ -87,8 +111,9 @@ class PromptField(tk.Canvas):
         self._focused = True
         if self._showing:
             self._showing = False
-            self.entry.delete(0, "end")
+            self.entry.delete("1.0", "end")
             self.entry.configure(fg=self.p.text)
+            self.after_idle(self._resize_to_text)
         self._draw_bg()
 
     def _focus_out(self, _e=None):
@@ -97,25 +122,27 @@ class PromptField(tk.Canvas):
         self._draw_bg()
 
     def _show_placeholder(self):
-        if not self._focused and (self._showing or not self.entry.get()):
+        if not self._focused and (self._showing or not self.entry.get("1.0", "end-1c")):
             self._showing = True
-            self.entry.delete(0, "end")
-            self.entry.insert(0, self._placeholder)
+            self.entry.delete("1.0", "end")
+            self.entry.insert("1.0", self._placeholder)
             self.entry.configure(fg=self.p.text_faint)
+            self.after_idle(self._resize_to_text)
 
     def set_placeholder(self, text: str) -> None:
         self._placeholder = text
         self._show_placeholder()
 
     def get(self) -> str:
-        return "" if self._showing else self.entry.get()
+        return "" if self._showing else self.entry.get("1.0", "end-1c")
 
     def set(self, text: str) -> None:
         self._showing = False
         self.entry.configure(fg=self.p.text)
-        self.entry.delete(0, "end")
-        self.entry.insert(0, text)
+        self.entry.delete("1.0", "end")
+        self.entry.insert("1.0", text)
         self._show_placeholder()
+        self.after_idle(self._resize_to_text)
 
 
 class StatusPill(tk.Toplevel):
@@ -180,7 +207,10 @@ class App:
         self.photocraft_seen = False  # connected at least once since shown (so a close can hide it)
         self._photocraft_down = 0     # failed checks in a row
         self.settings = Settings.load()
-        if not SETTINGS_FILE.exists():
+        if self.settings.create_second_reference:
+            self.settings.create_second_reference = ""  # the main reference never survives a restart
+            self.settings.save()
+        elif not SETTINGS_FILE.exists():
             self.settings.save()
         self.events: queue.Queue = queue.Queue()
         self.cancel = threading.Event()
@@ -757,7 +787,7 @@ class App:
     def _use_prompt(self, text: str) -> None:
         self.prompt.entry.focus_set()
         self.prompt.set(text)
-        self.prompt.entry.icursor("end")
+        self.prompt.entry.mark_set("insert", "end-1c")
 
     def use_preset(self, name: str) -> None:
         """Runs the preset straight away (the prompt box is left alone)."""
@@ -894,6 +924,8 @@ class App:
         self.settings.last_theme = self.theme_name
         if job == "fill" and self.mode == "empty" and not preset:
             job = "create"  # nothing open: Enter creates a picture
+        if job == "create" and not self.reference:
+            self.settings.create_second_reference = ""
         if preset:  # a preset brings its own instruction; the box and the history stay as they are
             prompt = presets.prompt_for(preset) or ""
         else:

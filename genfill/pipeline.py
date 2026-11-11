@@ -1036,12 +1036,15 @@ def create(choice: str, prompt: str, settings: Settings, status: Status, progres
     result opens there as a new document."""
     _, comfy = _clients(settings, object(), comfy)
     label = prompt.strip()
-    if not label:
+    restyle_reference = not label and reference is not None and bool(settings.style) and not settings.create_second_reference
+    if restyle_reference and family(settings.model_family).encoder == "text" and not settings.custom_workflow:
+        raise UserFacingError("This image model can't see the reference picture. Choose a reference-capable model "
+                              "to create from the selected style without a prompt.")
+    if not label and not restyle_reference:
         raise UserFacingError("Describe the picture to create first, for example 'a lighthouse at dusk, "
                               "film photo'.")
-    if settings.create_second_reference and reference is None:
-        raise UserFacingError("Choose the main Reference photo before using Create image 2.")
-    second = load_reference(settings.create_second_reference) if settings.create_second_reference else None
+    second = (load_reference(settings.create_second_reference)
+              if reference is not None and settings.create_second_reference else None)
     if second is not None and not all(re.search(rf"\bimage\s*{n}\b", label, flags=re.IGNORECASE)
                                   for n in (1, 2)):
         raise UserFacingError('With two Create images, mention both "image 1" and "image 2" in the prompt '
@@ -1050,9 +1053,14 @@ def create(choice: str, prompt: str, settings: Settings, status: Status, progres
         label_for_model = re.sub(r"\bimage\s*2\b", "image 1", label, flags=re.IGNORECASE)
     else:
         label_for_model = label
-    label_for_model = styles.styled(label_for_model, settings.style, angle=settings.angle,
-                                    reference_image=1 if reference is not None else None,
-                                    model_family=settings.model_family)
+    if restyle_reference:
+        label_for_model = (styles.styled("", settings.style, restyle=True, angle=settings.angle,
+                                         model_family=settings.model_family)
+                           + " Use image 1 as the source picture.")
+    else:
+        label_for_model = styles.styled(label_for_model, settings.style, angle=settings.angle,
+                                        reference_image=1 if reference is not None else None,
+                                        model_family=settings.model_family)
     count = max(1, min(MAX_VARIATIONS, count or settings.variations))
     W, H = create_size(choice, settings.megapixels)
     base = Image.new("RGBA", (W, H), (255, 255, 255, 255))
@@ -1061,7 +1069,8 @@ def create(choice: str, prompt: str, settings: Settings, status: Status, progres
         images = _candidates(job, settings, status, progress, cancel, comfy, count)
     except ComfyError as e:
         raise UserFacingError(str(e)) from e
-    return Results(images, [_preview(im, None) for im in images], f"Create – {label[:40]}", False, (W, H), None,
+    return Results(images, [_preview(im, None) for im in images],
+                   f"Create – {(label or settings.style)[:40]}", False, (W, H), None,
                    job, new_document=True)
 
 

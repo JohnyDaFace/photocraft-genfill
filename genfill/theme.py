@@ -67,15 +67,24 @@ def style_ttk(root: tk.Misc, p: Palette, f: dict) -> None:
     s.map("PC.TEntry", bordercolor=[("focus", p.accent)], lightcolor=[("focus", p.accent)])
     s.configure("PC.TCombobox", fieldbackground=p.field, background=p.field, foreground=p.text,
                 bordercolor=p.field_border, lightcolor=p.field_border, darkcolor=p.field_border,
-                arrowcolor=p.text_dim, padding=(px(6), px(3)))
+                arrowcolor=p.text_dim, arrowsize=px(15), borderwidth=1, relief="flat",
+                padding=(px(10), px(5)))
     s.map("PC.TCombobox", fieldbackground=[("readonly", p.field)], foreground=[("readonly", p.text)],
-          background=[("active", p.hover)], selectbackground=[("readonly", p.field)],
+          background=[("active", p.hover)], arrowcolor=[("active", p.text)],
+          bordercolor=[("focus", p.accent), ("active", p.text_faint)],
+          lightcolor=[("focus", p.accent)], darkcolor=[("focus", p.accent)],
+          selectbackground=[("readonly", p.field)],
           selectforeground=[("readonly", p.text)])
-    root.option_add("*TCombobox*Listbox.background", p.field)
+    root.option_add("*TCombobox*Listbox.background", p.chrome)
     root.option_add("*TCombobox*Listbox.foreground", p.text)
-    root.option_add("*TCombobox*Listbox.selectBackground", p.accent)
-    root.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
+    root.option_add("*TCombobox*Listbox.selectBackground", p.hover)
+    root.option_add("*TCombobox*Listbox.selectForeground", p.text)
     root.option_add("*TCombobox*Listbox.font", f["body"])
+    root.option_add("*TCombobox*Listbox.relief", "flat")
+    root.option_add("*TCombobox*Listbox.borderWidth", 0)
+    root.option_add("*TCombobox*Listbox.highlightThickness", 0)
+    root.option_add("*TCombobox*Listbox.selectBorderWidth", 0)
+    root.option_add("*TCombobox*Listbox.activeStyle", "none")
     s.configure("PC.Horizontal.TProgressbar", troughcolor=p.field, background=p.accent, bordercolor=p.chrome,
                 lightcolor=p.accent, darkcolor=p.accent, thickness=px(4))
 

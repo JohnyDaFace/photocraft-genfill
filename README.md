@@ -46,7 +46,7 @@ The other tools sit in the bar's menus, grouped by what they do:
 
 And next to the prompt:
 
-- **Style**: 85 looks in tabs (Photo, Portrait, Product, Art, Design, Eras) that stay on for Create and
+- **Style**: 86 looks in tabs (Photo, Portrait, Product, Art, Design, Eras) that stay on for Create and
   whole-image edits; the button shows the look while one is on, with ✕ to turn it off. With nothing typed,
   Generate turns a photo into that style. Add an angle from the **+ Angles** tab on top (low angle, bird's-eye,
   from behind, wide shot…); the panel shows "Look: … + Angle: …".
@@ -278,7 +278,9 @@ the bar to the taskbar; **⋯** sits below it.
    press 1–4). **Discard all** adds nothing. With 1 result it goes straight in.
 4. A new layer "Generative Fill" appears with a soft mask. Paint on the mask to adjust, or Undo to remove it.
 
-The prompt box remembers your last 15 prompts: click the clock icon inside it to pick one again.
+The prompt box wraps and grows for longer descriptions (up to five lines; scroll for more). Press **Shift+Enter**
+for a line break, or **Enter** to Generate. It remembers your last 15 prompts: click the clock icon inside it to
+pick one again.
 
 **Remove**: select the object (generously, including its shadow), optionally type what it is ("basket",
 "the person on the left"), and pick **Remove › What's selected**. Naming it helps when the selection holds more than one thing.
@@ -318,7 +320,8 @@ versions that keep its layout and vary the details; the one you picked stays as 
   low-angle hero shot or a top-down flat lay.
   With a model: Model studio, Model close-up, In hand, Model lifestyle, Model outdoors put a woman holding
   your product in different poses, from beside her face in the studio to a sunny street.
-- **Art**: Anime, Japanese ink, Watercolour, Oil painting, Pencil sketch, Comic book, 3D animation, Fantasy art,
+- **Art**: Anime, Japanese ink, Watercolour, Oil painting, Pencil sketch, Caricature drawing, Comic book,
+  3D animation, Fantasy art,
   Neon cyberpunk, Toy figure, Claymation, Pixel art, Stained glass, Retro 80s, Surreal, Gouache, Charcoal,
   Ink illustration, Impressionism, Manga, Chibi, Picture book, Gongbi, Low-poly.
 - **Design**: Art Deco, Art Nouveau, Bauhaus, Minimalist, Vintage poster: graphic looks from design movements.
@@ -387,7 +390,9 @@ photo"), click **Create** and pick a shape (1:1, 4:5, 3:2, 16:9, 9:16, 2:3; the 
 HD, so 16:9 is 1920×1080). You choose from the results as with Generate, *More like this* works too, and the one you pick opens
 as a new document; your open pictures are not touched. Describe it like a photo caption: subject, place, light,
 style ("film photo", "watercolour", "studio product shot"). With one **reference picture**, Create uses it as
-image 1 automatically; the prompt does not need to name it. Choose an optional second picture from the
+image 1 automatically; the prompt does not need to name it. With a style selected, you can leave the prompt
+empty and click **Create** to make a new picture of that reference in the chosen style with a model that accepts
+reference images (FLUX.2, FLUX 3, or Qwen Image 2.1). Choose an optional second picture from the
 **Reference** menu under **Additional Create reference · image 2**. When both are set, name **image 1** and **image 2** in the prompt to say what
 to take from each. FLUX.2 prepares each reference at 1 MP without changing its proportions; the selected output
 shape stays independent of both reference sizes. For print sizes, use **Upscale** on the result.

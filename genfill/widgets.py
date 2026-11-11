@@ -503,7 +503,7 @@ class PopupMenu(tk.Toplevel):
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.configure(bg=p.field_border)
-        body = tk.Frame(self, bg=p.chrome, padx=px(4), pady=px(4))
+        body = tk.Frame(self, bg=p.chrome, padx=px(6), pady=px(6))
         body.pack(padx=1, pady=1)
         self._imgs = []
         for it in items:
@@ -535,18 +535,20 @@ class PopupMenu(tk.Toplevel):
     def _row(self, body, text, right="", icon=None, color=None, active=True):
         p = self.p
         row = tk.Frame(body, bg=p.chrome, cursor="hand2" if active else "arrow")
-        row.pack(fill="x")
+        row.pack(fill="x", pady=px(1))
+        marker = tk.Frame(row, bg=p.chrome, width=max(2, px(2)))
+        marker.pack(side="left", fill="y")
+        row._marker = marker
         kids = []
         if icon:
-            normal = ImageTk.PhotoImage(icon_image(icon, px(16), color or p.text_dim))
-            white = ImageTk.PhotoImage(icon_image(icon, px(16), "#ffffff"))
-            self._imgs += [normal, white]
+            normal = ImageTk.PhotoImage(icon_image(icon, px(16), color or p.accent))
+            self._imgs.append(normal)
             lab = tk.Label(row, image=normal, bg=p.chrome, width=px(18), bd=0)
-            lab.pack(side="left", padx=(px(8), 0), pady=px(5))
-            lab.looks = ({"image": normal}, {"image": white})
+            lab.pack(side="left", padx=(px(8), 0), pady=px(6))
+            lab.looks = ({"image": normal}, {"image": normal})
             kids.append(lab)
         t = tk.Label(row, text=text, bg=p.chrome, fg=color or (p.text if active else p.text_faint), font=self.font,
-                     anchor="w", padx=px(8), pady=px(5))
+                     anchor="w", padx=px(9), pady=px(6))
         t.pack(side="left", fill="x", expand=True)
         t.looks = ({"fg": t.cget("fg")}, {"fg": "#ffffff"})
         kids.append(t)
@@ -558,10 +560,11 @@ class PopupMenu(tk.Toplevel):
         return row, kids
 
     def _hover(self, row, kids, on):
-        bg = self.p.accent if on else self.p.chrome
+        bg = self.p.hover if on else self.p.chrome
         row.configure(bg=bg)
+        row._marker.configure(bg=self.p.accent if on else self.p.chrome)
         for k in kids:
-            k.configure(bg=bg, **k.looks[1 if on else 0])
+            k.configure(bg=bg, **k.looks[0])
 
     def _add(self, body, it):
         p, kind = self.p, it[0]
@@ -580,7 +583,7 @@ class PopupMenu(tk.Toplevel):
             return
         if kind == "sub":
             row, kids = self._row(body, it[1], right="›")
-            for w in [row] + kids:
+            for w in [row, row._marker] + kids:
                 w.bind("<Enter>", lambda e, r=row, k=kids, sub=it[2]: (self._hover(r, k, True), self._open_sub(r, sub)))
                 w.bind("<Leave>", lambda e, r=row, k=kids: self._hover(r, k, False))
             return
@@ -594,7 +597,7 @@ class PopupMenu(tk.Toplevel):
             icon = it[3] if len(it) > 3 else None
             right = it[4] if len(it) > 4 else ""
             row, kids = self._row(body, label, right=right, icon=icon)
-        for w in [row] + kids:
+        for w in [row, row._marker] + kids:
             w.bind("<Enter>", lambda e, r=row, k=kids: (self._hover(r, k, True), self._close_child()))
             w.bind("<Leave>", lambda e, r=row, k=kids: self._hover(r, k, False))
             w.bind("<ButtonRelease-1>", lambda e, c=cb: self._choose(c))

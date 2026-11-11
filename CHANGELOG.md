@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The prompt field wraps and grows for longer descriptions, with Shift+Enter for a new line.
+- Added Caricature drawing to the Art presets, with a thumbnail generated through FLUX.2.
+
+### Fixed
+
+- Create can apply a selected style to one reference picture without a typed prompt.
+- Create explains when the selected model cannot see the reference picture in that flow.
+- Create ignores a saved second-reference path when no main reference is attached.
+- Film noir no longer asks the model to add venetian blinds to the scene.
+- Refreshed the bar menus and Settings dropdown appearance.
+
+### Documentation
+
+- Updated the README for the expanding prompt, new Art preset, and reference-only Create flow.
+
 ## 1.3.1 — 2026-11-10
 
 ### Added

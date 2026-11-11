@@ -156,6 +156,44 @@ def test_placeholder_is_never_taken_as_the_prompt(root):
     assert f.get() == ""
 
 
+def test_prompt_wraps_grows_and_shrinks_with_text(root):
+    from genfill.app import PromptField
+
+    field = PromptField(root, theme.PALETTES["Pro"], theme.fonts(root)["body"], 300,
+                        lambda: None, lambda: None)
+    field.pack()
+    root.deiconify()
+    root.update()
+    one_line = field.winfo_height()
+    field.set("a cinematic photograph of a person standing in a long corridor, " * 5)
+    root.update()
+    assert field.winfo_height() > one_line
+    assert field.winfo_height() <= one_line + 120
+    field.set("short prompt")
+    root.update()
+    assert field.winfo_height() == one_line
+
+
+def test_prompt_enter_generates_and_shift_enter_adds_a_line(root):
+    from genfill.app import PromptField
+
+    generated = []
+    field = PromptField(root, theme.PALETTES["Pro"], theme.fonts(root)["body"], 300,
+                        lambda: generated.append(field.get()), lambda: None)
+    field.pack()
+    root.deiconify()
+    field.set("first line")
+    root.focus_force()
+    field.entry.focus_force()
+    root.update()
+    field.entry.event_generate("<Shift-Return>", when="tail")
+    root.update()
+    field.entry.insert("insert", "second line")
+    field.entry.event_generate("<Return>", when="tail")
+    root.update()
+    assert generated == ["first line\nsecond line"]
+
+
 def test_menu_runs_the_choice_and_closes(root):
     chosen = []
     anchor = tk.Frame(root)
